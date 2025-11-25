@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "fn-terminal.Application": {
+            "title": "terminal",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "",
+            "port": "17681",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}

@@ -1,0 +1,64 @@
+#
+# Copyright (C) 2022 Ing <https://github.com/wjz304>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Init Env
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+      - name: Build
+        run: |
+          echo "TAG=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+
+          curl -sSL https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64 -o fnpack
+          sudo chmod +x fnpack
+
+          echo "| 应用名称 | 版本 | 描述 |" > apps-list.md
+          echo "|----------|------|------|" >> apps-list.md
+
+          for APP in fn-*; do
+            [ -f "${APP}/manifest" ] || continue
+            echo "Building ${APP} ..."
+
+            # ./fnpack create ${APP} --without-ui true  # 如果不需要 UI, 可以启用此行
+            ./fnpack build --directory ${APP}
+
+            VERSION=$(grep '^version' "$APP/manifest" | awk -F= '{print $2}' | xargs)
+            DESC=$(grep '^desc' "$APP/manifest" | awk -F= '{print $2}' | xargs)
+            echo "| ${APP} | v${VERSION} | ${DESC} |" >> apps-list.md
+
+            mv -f "${APP}.fpk" "${APP}_v${VERSION}.fpk"
+          done
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fn-apps
+          path: fn-*.fpk
+          retention-days: 5
+
+      - name: Release
+        if: success() && !cancelled()
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.RRORG }}
+          tag: ${{ env.TAG }}
+          artifacts: "*.fpk"
+          bodyFile: "apps-list.md"

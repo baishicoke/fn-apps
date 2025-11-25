@@ -1,0 +1,8 @@
+appname      = fn-qemu-ga
+version      = 1.0.0
+display_name = qemu-ga
+desc         = qemu-guest-agent
+arch         = x86_64
+source       = thirdparty
+maintainer   = Ing
+distributor  = RROrg

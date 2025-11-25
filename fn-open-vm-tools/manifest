@@ -1,0 +1,8 @@
+appname      = fn-open-vm-tools
+version      = 1.0.0
+display_name = open-vm-tools
+desc         = open-vm-tools
+arch         = x86_64
+source       = thirdparty
+maintainer   = Ing
+distributor  = RROrg

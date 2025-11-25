@@ -1,0 +1,10 @@
+appname               = fn-terminal
+version               = 1.0.0
+display_name          = terminal
+desc                  = terminal
+arch                  = x86_64
+source                = thirdparty
+maintainer            = Ing
+distributor           = RROrg
+desktop_uidir         = ui
+desktop_applaunchname = fn-terminal.Application
