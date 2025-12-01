@@ -1,0 +1,23 @@
+services:
+  msedge:
+    image: linuxserver/msedge:latest
+    container_name: msedge
+    environment:
+      - PUID=${TRIM_UID}
+      - PGID=${TRIM_GID}
+      - TZ=Asia/Shanghai
+      - LC_ALL=zh_CN.UTF-8
+      - CUSTOM_USER=${wizard_username}
+      - PASSWORD=${wizard_password}
+    volumes:
+      - /var/apps/fn-msedge/shares/msedge/config:/config
+    ports:
+      - 4000:3000
+      - 4001:3001
+    shm_size: "1gb"
+    restart: unless-stopped
+    networks:
+      - trim-default
+networks:
+  trim-default:
+    external: true

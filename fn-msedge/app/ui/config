@@ -1,0 +1,24 @@
+{
+    ".url": {
+        "fn-msedge.Application": {
+            "title": "msedge",
+            "desc": "msedge",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "https",
+            "port": "4001",
+            "url": "/",
+            "allUsers": false
+        },
+        "fn-msedge.ApplicationWeb": {
+            "title": "msedge Web",
+            "desc": "msedge Web",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "https",
+            "port": "4001",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}
