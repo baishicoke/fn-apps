@@ -8,7 +8,12 @@
             "protocol": "https",
             "port": "4001",
             "url": "/",
-            "allUsers": false
+            "allUsers": false,
+            "control": {
+                "accessPerm": "readonly",
+                "portPerm": "readonly", 
+                "pathPerm": "readonly"
+            }
         },
         "fn-msedge.ApplicationWeb": {
             "title": "msedge Web",
@@ -18,7 +23,12 @@
             "protocol": "https",
             "port": "4001",
             "url": "/",
-            "allUsers": false
+            "allUsers": false,
+            "control": {
+                "accessPerm": "readonly",
+                "portPerm": "readonly", 
+                "pathPerm": "readonly"
+            }
         }
     }
 }
