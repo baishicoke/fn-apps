@@ -25,7 +25,8 @@ jobs:
 
       - name: Build
         run: |
-          echo "TAG=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          TAG=$(date +"%Y.%m.%d-%H%M")
+          echo "TAG=${TAG}" >> $GITHUB_ENV
 
           curl -sSL https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64 -o fnpack
           sudo chmod +x fnpack
@@ -46,6 +47,9 @@ jobs:
 
             mv -f "${APP}.fpk" "${APP}_v${VERSION}.fpk"
           done
+
+          echo "" >> apps-list.md
+          echo "![](https://img.shields.io/github/downloads/rrorg/fn-apps/${TAG}/total)" >> apps-list.md
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
