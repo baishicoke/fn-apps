@@ -1,18 +1,24 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>任务计划</title>
     <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
     <header class="app-header">
         <div>
             <h1>任务计划</h1>
             <p class="subtitle">管理定时与条件触发的脚本任务</p>
         </div>
-        <button id="btnRefresh" class="ghost">刷新</button>
+        <div style="display: flex; align-items: center; gap: 1.5em;">
+            <!-- <span id="currentTime" class="muted" style="font-size:1.1em;"></span> -->
+            <a href="https://github.com/RROrg/fn-apps" target="_blank" rel="noopener" id="githubLink" class="muted github-link">GitHub</a>
+            <button id="btnRefresh" class="ghost">刷新</button>
+        </div>
     </header>
 
     <main>
@@ -62,12 +68,13 @@
                             <select name="account" id="accountSelect" required></select>
                             <button type="button" id="btnReloadAccounts" class="ghost small">刷新</button>
                         </div>
-                        <small id="accountStatus" class="muted account-status-text">Linux 环境仅可选择系统组的账号；Windows 环境默认使用当前登录账号</small>
+                        <small id="accountStatus" class="muted account-status-text">Linux 环境仅可选择系统组的账号；Windows
+                            环境默认使用当前登录账号</small>
                     </label>
                     <label>
-                        <span>是否启动</span>
-                        <label class="switch">
-                            <input type="checkbox" name="is_active" checked />
+                        <span id="isActiveLabel">是否启动</span>
+                        <label class="switch" for="isActiveCheckbox">
+                            <input type="checkbox" id="isActiveCheckbox" name="is_active" checked aria-labelledby="isActiveLabel" />
                             <span class="slider"></span>
                         </label>
                     </label>
@@ -102,14 +109,15 @@
                         <small>系统开/关机事件在服务启动或停止时各触发一次</small>
                     </label>
                     <div data-event-subsection="script">
-                    <label>
-                        <span>条件脚本（返回 0 触发）</span>
-                        <textarea name="condition_script" rows="3" placeholder="#!/bin/bash&#10;test -f /tmp/ready.flag"></textarea>
-                    </label>
-                    <label>
-                        <span>检测间隔（秒）</span>
-                        <input type="number" name="condition_interval" min="10" value="60" />
-                    </label>
+                        <label>
+                            <span>条件脚本（返回 0 触发）</span>
+                            <textarea name="condition_script" rows="3"
+                                placeholder="#!/bin/bash&#10;test -f /tmp/ready.flag"></textarea>
+                        </label>
+                        <label>
+                            <span>检测间隔（秒）</span>
+                            <input type="number" name="condition_interval" min="10" value="60" />
+                        </label>
                     </div>
                 </div>
 
@@ -117,7 +125,7 @@
                     <span>前置任务</span>
                     <div class="pretask-wrapper">
                         <select name="pre_task_ids" id="preTaskSelect" multiple size="4"></select>
-                        <button type="button" id="btnClearPreTasks" class="ghost small">清空</button>
+                        <button type="button" id="btnClearPreTasks" class="ghost small">全取消</button>
                     </div>
                     <small>仅当所选任务最近一次成功后才执行</small>
                 </label>
@@ -143,7 +151,7 @@
                     <p id="resultSubtitle" class="subtitle"></p>
                 </div>
                 <div class="modal-header-actions">
-                    <button id="btnClearResults" class="ghost">无前置</button>
+                    <button id="btnClearResults" class="ghost">清空</button>
                     <button class="ghost" data-close>&times;</button>
                 </div>
             </div>
@@ -174,7 +182,8 @@
                                 <option value="custom">自定义</option>
                             </select>
                         </label>
-                        <input type="text" class="cron-custom-input hidden" data-cron-custom="minute" placeholder="例如 0,15,30,45" />
+                        <input type="text" class="cron-custom-input hidden" data-cron-custom="minute"
+                            placeholder="例如 0,15,30,45" />
                     </div>
                     <div class="cron-field">
                         <label>
@@ -189,7 +198,8 @@
                                 <option value="custom">自定义</option>
                             </select>
                         </label>
-                        <input type="text" class="cron-custom-input hidden" data-cron-custom="hour" placeholder="例如 0,6,12,18" />
+                        <input type="text" class="cron-custom-input hidden" data-cron-custom="hour"
+                            placeholder="例如 0,6,12,18" />
                     </div>
                     <div class="cron-field">
                         <label>
@@ -202,7 +212,8 @@
                                 <option value="custom">自定义</option>
                             </select>
                         </label>
-                        <input type="text" class="cron-custom-input hidden" data-cron-custom="day" placeholder="例如 1-5 或 1,15" />
+                        <input type="text" class="cron-custom-input hidden" data-cron-custom="day"
+                            placeholder="例如 1-5 或 1,15" />
                     </div>
                     <div class="cron-field">
                         <label>
@@ -216,7 +227,8 @@
                                 <option value="custom">自定义</option>
                             </select>
                         </label>
-                        <input type="text" class="cron-custom-input hidden" data-cron-custom="month" placeholder="例如 3,6,9,12" />
+                        <input type="text" class="cron-custom-input hidden" data-cron-custom="month"
+                            placeholder="例如 3,6,9,12" />
                     </div>
                     <div class="cron-field">
                         <label>
@@ -231,12 +243,18 @@
                                 <option value="custom">自定义</option>
                             </select>
                         </label>
-                        <input type="text" class="cron-custom-input hidden" data-cron-custom="weekday" placeholder="例如 0,2,4" />
+                        <input type="text" class="cron-custom-input hidden" data-cron-custom="weekday"
+                            placeholder="例如 0,2,4" />
                     </div>
                 </div>
                 <div class="cron-preview">
-                    <span>当前表达式：</span>
-                    <code id="cronPreview">* * * * *</code>
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <div>
+                            <span>当前表达式：</span>
+                            <code id="cronPreview">* * * * *</code>
+                        </div>
+                    </div>
+                    <div id="cronNextTimes" class="muted" style="margin-left:auto;font-size:0.95em;"></div>
                 </div>
                 <small class="muted">顺序：分钟 小时 日 月 周；自定义字段可使用数字、*、/、,、-，为空时默认 *</small>
                 <div class="modal-actions">
@@ -251,4 +269,5 @@
 
     <script type="module" src="app.js"></script>
 </body>
+
 </html>

@@ -35,8 +35,25 @@ const elements = {
     cronModal: document.getElementById('cronModal'),
     cronForm: document.getElementById('cronForm'),
     cronPreview: document.getElementById('cronPreview'),
+    cronNextTimes: document.getElementById('cronNextTimes'),
     scheduleInput: document.querySelector('input[name="schedule_expression"]'),
+    currentTime: document.getElementById('currentTime'),
 };
+// 显示当前时间
+function updateCurrentTime() {
+    if (!elements.currentTime) return;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    elements.currentTime.textContent = `${y}-${m}-${d} ${h}:${min}:${s}`;
+}
+
+setInterval(updateCurrentTime, 1000);
+updateCurrentTime();
 
 const buttons = {
     create: document.getElementById('btnCreate'),
@@ -150,9 +167,11 @@ const api = {
 
 function formatDate(value) {
     if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    // 去除 T、去除时区（如 +00:00 或 Z）
+    let s = value.replace('T', ' ');
+    // 去掉结尾的时区部分（+00:00、Z等）
+    s = s.replace(/([\+\-]\d{2}:?\d{2}|Z)$/i, '');
+    return s.trim();
 }
 
 function getSelectedTasks() {
@@ -464,7 +483,82 @@ function updateCronPreview() {
     if (elements.cronPreview) {
         elements.cronPreview.textContent = expression;
     }
+    // 计算2次执行时间
+    if (elements.cronNextTimes) {
+        const times = getNextCronTimes(expression, 2);
+        if (times.length) {
+                elements.cronNextTimes.innerHTML = '执行时间预览：' + times.map(t => `<div>${t}</div>`).join('');
+        } else {
+            elements.cronNextTimes.textContent = '';
+        }
+    }
     return expression;
+}
+
+// 计算N次 Cron 时间（本地时间）
+function getNextCronTimes(expr, count = 2) {
+    try {
+        const now = new Date();
+        let base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 0, 0);
+        const parts = expr.trim().split(/\s+/);
+        if (parts.length !== 5) return [];
+        // 解析每个字段
+        function parseField(str, min, max) {
+            if (str === '*') return Array.from({length: max-min+1}, (_,i)=>i+min);
+            let out = new Set();
+            str.split(',').forEach(token => {
+                if (token.includes('/')) {
+                    let [range, step] = token.split('/');
+                    step = parseInt(step);
+                    if (!step || step < 1) return;
+                    let vals = range === '*' ? Array.from({length:max-min+1},(_,i)=>i+min) : parseRange(range,min,max);
+                    vals.forEach((v,i)=>{if((v-min)%step===0)out.add(v);});
+                } else {
+                    parseRange(token,min,max).forEach(v=>out.add(v));
+                }
+            });
+            return Array.from(out).filter(v=>v>=min&&v<=max).sort((a,b)=>a-b);
+        }
+        function parseRange(token,min,max){
+            if(token==='*')return Array.from({length:max-min+1},(_,i)=>i+min);
+            if(token.includes('-')){
+                let[a,b]=token.split('-').map(Number);
+                if(isNaN(a)||isNaN(b)||a>b)return[];
+                return Array.from({length:b-a+1},(_,i)=>a+i);
+            }
+            let n=Number(token);return isNaN(n)?[]:[n];
+        }
+        const minutes = parseField(parts[0],0,59);
+        const hours = parseField(parts[1],0,23);
+        const days = parseField(parts[2],1,31);
+        const months = parseField(parts[3],1,12);
+        const weekdays = parseField(parts[4],0,6);
+        let results = [];
+        let tries = 0;
+        while(results.length<count && tries<5000){
+            base.setMinutes(base.getMinutes()+1);
+            if (!months.includes(base.getMonth()+1)) continue;
+            if (!hours.includes(base.getHours())) continue;
+            if (!minutes.includes(base.getMinutes())) continue;
+            let jsWeekday = base.getDay(); // JS: 0=周日, 1=周一, ..., 6=周六
+            let cronWeekday = (jsWeekday + 6) % 7; // Cron: 0=周一, 6=周日
+            // Linux cron: 日和周字段 OR 关系
+            let dayMatch = days.includes(base.getDate());
+            let weekMatch = weekdays.includes(cronWeekday);
+            if (!(dayMatch || weekMatch)) continue;
+            results.push(formatCronDate(base));
+        }
+        return results;
+    } catch(e){return[];}
+}
+
+function formatCronDate(dt){
+    const y=dt.getFullYear();
+    const m=String(dt.getMonth()+1).padStart(2,'0');
+    const d=String(dt.getDate()).padStart(2,'0');
+    const h=String(dt.getHours()).padStart(2,'0');
+    const min=String(dt.getMinutes()).padStart(2,'0');
+    return `${y}-${m}-${d} ${h}:${min}`;
 }
 
 function prefillCronGenerator(expression = '') {

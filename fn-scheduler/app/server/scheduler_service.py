@@ -183,21 +183,32 @@ logging.basicConfig(
 )
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
+def time_now() -> datetime:
+    IS_LOCAL_TIME = True
+    if IS_LOCAL_TIME:
+        # 返回本地时间（无时区信息，和服务器系统时间一致）
+        return datetime.now()
+    else:
+        # 带时区信息的 UTC 时间
+        return datetime.now(timezone.utc)
 
 def isoformat(dt: Optional[datetime]) -> Optional[str]:
     if dt is None:
         return None
-    return dt.astimezone(timezone.utc).isoformat()
+    # 直接用本地时间的 ISO 格式
+    return dt.replace(microsecond=0).isoformat(sep=' ')
 
 
 def parse_iso(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        # 兼容带空格的本地时间字符串
+        dt = datetime.fromisoformat(value.replace('T', ' '))
+        # 如果是带时区的，转为本地无时区
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
     except ValueError:
         return None
 
@@ -452,7 +463,7 @@ class Database:
         return self._row_to_dict(row) if row else None
 
     def create_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        now = isoformat(utc_now())
+        now = isoformat(time_now())
         task = self._prepare_task_payload(payload, is_update=False)
         task["created_at"] = now
         task["updated_at"] = now
@@ -503,7 +514,7 @@ class Database:
                 payload = dict(payload)
                 payload["next_run_at"] = None  # 让 _prepare_task_payload 自动计算
             task = self._prepare_task_payload({**existing, **payload}, is_update=True)
-            task["updated_at"] = isoformat(utc_now())
+            task["updated_at"] = isoformat(time_now())
             with self._lock:
                 self._conn.execute(
                     """
@@ -541,7 +552,7 @@ class Database:
             return cur.rowcount > 0
 
     def record_result_start(self, task_id: int, trigger_reason: str) -> int:
-        now = isoformat(utc_now())
+        now = isoformat(time_now())
         with self._lock:
             cur = self._conn.execute(
                 """
@@ -554,7 +565,7 @@ class Database:
             return cur.lastrowid
 
     def finalize_result(self, result_id: int, status: str, log_text: str) -> None:
-        now = isoformat(utc_now())
+        now = isoformat(time_now())
         with self._lock:
             self._conn.execute(
                 "UPDATE task_results SET status=?, finished_at=?, log=? WHERE id=?",
@@ -614,7 +625,7 @@ class Database:
         with self._lock:
             self._conn.execute(
                 "UPDATE tasks SET last_run_at=?, updated_at=? WHERE id=?",
-                (isoformat(utc_now()), isoformat(utc_now()), task_id),
+                (isoformat(time_now()), isoformat(time_now()), task_id),
             )
             self._conn.commit()
 
@@ -622,12 +633,12 @@ class Database:
         if not expression:
             return None
         cron = CronExpression(expression)
-        next_dt = cron.next_after(base or utc_now())
+        next_dt = cron.next_after(base or time_now())
         next_iso = isoformat(next_dt)
         with self._lock:
             self._conn.execute(
                 "UPDATE tasks SET next_run_at=?, updated_at=? WHERE id=?",
-                (next_iso, isoformat(utc_now()), task_id),
+                (next_iso, isoformat(time_now()), task_id),
             )
             self._conn.commit()
         return next_iso
@@ -636,7 +647,7 @@ class Database:
         with self._lock:
             self._conn.execute(
                 "UPDATE tasks SET last_condition_check_at=?, updated_at=? WHERE id=?",
-                (isoformat(utc_now()), isoformat(utc_now()), task_id),
+                (isoformat(time_now()), isoformat(time_now()), task_id),
             )
             self._conn.commit()
 
@@ -718,7 +729,7 @@ class Database:
                 raise ValueError("定时任务需要 Cron 表达式")
             cron = CronExpression(schedule_expression)
             if not is_update or not next_run_at:
-                next_run_at = isoformat(cron.next_after(utc_now()))
+                next_run_at = isoformat(cron.next_after(time_now()))
             condition_script = None
             event_type = EVENT_TYPE_SCRIPT
         else:
@@ -876,7 +887,7 @@ class SchedulerEngine:
     # Internal ------------------------------------------------------------
     def _loop(self) -> None:
         while not self.stop_event.is_set():
-            now = utc_now()
+            now = time_now()
             try:
                 self._process_due_tasks(now)
                 self._process_event_tasks(now)
@@ -1277,7 +1288,7 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         ctx: SchedulerContext = self.server.app_context  # type: ignore[attr-defined]
         tasks = ctx.db.list_tasks()
         payload = {
-            "time": isoformat(utc_now()),
+            "time": isoformat(time_now()),
             "task_count": len(tasks),
         }
         self._json_response(payload)
