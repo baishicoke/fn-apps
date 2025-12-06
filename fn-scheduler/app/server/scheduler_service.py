@@ -489,40 +489,50 @@ class Database:
         return self.get_task(task_id)  # type: ignore
 
     def update_task(self, task_id: int, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        existing = self.get_task(task_id)
-        if not existing:
-            return None
-        task = self._prepare_task_payload({**existing, **payload}, is_update=True)
-        task["updated_at"] = isoformat(utc_now())
-        with self._lock:
-            self._conn.execute(
-                """
-                UPDATE tasks SET
-                    name=?, account=?, trigger_type=?, schedule_expression=?, condition_script=?,
-                    condition_interval=?, event_type=?, is_active=?, pre_task_ids=?, script_body=?,
-                    last_run_at=?, next_run_at=?, last_condition_check_at=?, updated_at=?
-                WHERE id=?
-                """,
-                (
-                    task["name"],
-                    task["account"],
-                    task["trigger_type"],
-                    task.get("schedule_expression"),
-                    task.get("condition_script"),
-                    task["condition_interval"],
-                    task["event_type"],
-                    1 if task["is_active"] else 0,
-                    json.dumps(task["pre_task_ids"]),
-                    task["script_body"],
-                    task.get("last_run_at"),
-                    task.get("next_run_at"),
-                    task.get("last_condition_check_at"),
-                    task["updated_at"],
-                    task_id,
-                ),
-            )
-            self._conn.commit()
-        return self.get_task(task_id)
+            existing = self.get_task(task_id)
+            if not existing:
+                return None
+            # 检查 Cron 表达式是否变更，变更则强制 next_run_at 重新计算
+            old_expr = existing.get("schedule_expression")
+            new_expr = payload.get("schedule_expression", old_expr)
+            if (
+                existing.get("trigger_type") == "schedule"
+                and old_expr != new_expr
+                and new_expr
+            ):
+                payload = dict(payload)
+                payload["next_run_at"] = None  # 让 _prepare_task_payload 自动计算
+            task = self._prepare_task_payload({**existing, **payload}, is_update=True)
+            task["updated_at"] = isoformat(utc_now())
+            with self._lock:
+                self._conn.execute(
+                    """
+                    UPDATE tasks SET
+                        name=?, account=?, trigger_type=?, schedule_expression=?, condition_script=?,
+                        condition_interval=?, event_type=?, is_active=?, pre_task_ids=?, script_body=?,
+                        last_run_at=?, next_run_at=?, last_condition_check_at=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        task["name"],
+                        task["account"],
+                        task["trigger_type"],
+                        task.get("schedule_expression"),
+                        task.get("condition_script"),
+                        task["condition_interval"],
+                        task["event_type"],
+                        1 if task["is_active"] else 0,
+                        json.dumps(task["pre_task_ids"]),
+                        task["script_body"],
+                        task.get("last_run_at"),
+                        task.get("next_run_at"),
+                        task.get("last_condition_check_at"),
+                        task["updated_at"],
+                        task_id,
+                    ),
+                )
+                self._conn.commit()
+            return self.get_task(task_id)
 
     def delete_task(self, task_id: int) -> bool:
         with self._lock:
