@@ -137,6 +137,29 @@ button:disabled {
     transform: none !important;
 }
 
+/* 统一按钮选中态（用于工具栏按钮、模板页等） */
+button.selected,
+button[aria-pressed="true"] {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+    box-shadow: 0 6px 12px rgba(59, 130, 246, 0.12);
+}
+
+.templates-toolbar button.selected,
+.templates-toolbar button[aria-pressed="true"] {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+/* 对于使用 ghost 风格但希望在选中时显示强调（如果需要更柔和的视觉，可改用半透明背景） */
+button.ghost.selected {
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--primary);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
 /* 工具栏 */
 .toolbar {
     display: flex;
@@ -151,6 +174,16 @@ button:disabled {
     top: 89px;
     z-index: 40;
     box-shadow: var(--shadow-sm);
+}
+
+.toolbar button:not(.primary):not(.danger):not(.ghost):hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+.dark .toolbar button:not(.primary):not(.danger):not(.ghost):hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.04);
 }
 
 /* 表格容器 */
@@ -175,11 +208,11 @@ button:disabled {
     position: sticky;
     top: 0;
     z-index: 5;
-    background: #f1f5f9;
+    background: var(--surface);
 }
 
 #taskTable thead {
-    background: #f1f5f9;
+    background: var(--surface);
 }
 
 #taskTable th {
@@ -205,12 +238,12 @@ button:disabled {
 }
 
 #taskTable tbody tr:hover {
-    background: #f8fafc;
+    background: rgba(0, 0, 0, 0.03);
 }
 
 #taskTable tbody tr.selected {
-    background: #e0f2fe;
-    border-left: 3px solid var(--primary);
+    background: var(--selected-bg);
+    border-left: 3px solid var(--selected-border, var(--primary));
 }
 
 /* 状态标签 */
@@ -344,7 +377,7 @@ button:disabled {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 24px;
+    margin-bottom: 4px;
     padding-bottom: 16px;
     border-bottom: 1px solid var(--border);
 }
@@ -569,7 +602,7 @@ small {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 8px;
-    background: #f8fafc;
+    background: var(--surface);
 }
 
 .cron-field label>span {
@@ -584,7 +617,7 @@ small {
 }
 
 .cron-preview {
-    background: #f1f5f9;
+    background: var(--surface);
     border-radius: var(--radius);
     padding: 10px;
     margin: 12px 0;
@@ -728,46 +761,71 @@ small {
     width: 100%;
     border-collapse: collapse;
 }
+
 .simple-table thead th {
     text-align: left;
     padding: 10px;
     border-bottom: 1px solid var(--border);
-    background: #f8fafc;
+    background: var(--surface);
     font-weight: 600;
 }
+
 .simple-table td {
     padding: 10px;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
     font-size: 13px;
 }
-.simple-table tbody tr { cursor: pointer; transition: background 0.12s; }
-.simple-table tbody tr:hover { background: #f1f5f9; }
-.simple-table tbody tr.selected { background: rgba(59,130,246,0.08); outline: 2px solid rgba(59,130,246,0.12); }
+
+.simple-table tbody tr {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.simple-table tbody tr:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.simple-table tbody tr.selected {
+    background: rgba(59, 130, 246, 0.08);
+    outline: 2px solid rgba(59, 130, 246, 0.12);
+}
 
 /* 加强选中行的视觉对比并添加左侧强调线 */
 .simple-table tbody tr.selected {
-    background: rgba(59,130,246,0.12);
+    background: rgba(59, 130, 246, 0.12);
     outline: none;
-    box-shadow: inset 0 0 0 1px rgba(59,130,246,0.06);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.06);
     border-left: 4px solid var(--primary);
 }
 
 /* 可聚焦行样式（键盘导航时可见） */
 .simple-table tbody tr:focus {
-    outline: 3px solid rgba(59,130,246,0.14);
-    background: rgba(59,130,246,0.06);
+    outline: 3px solid rgba(59, 130, 246, 0.14);
+    background: rgba(59, 130, 246, 0.06);
 }
 
-.templates-toolbar { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:nowrap; overflow:auto; }
+.templates-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-top: 4px;
+    flex-wrap: nowrap;
+    overflow: auto;
+}
 
 /* 将导入/导出按钮视觉分组并略微收紧间距 */
-#btnImportTemplates, #btnExportTemplates {
+#btnImportTemplates,
+#btnExportTemplates {
     margin-left: 4px;
 }
 
 /* 更紧凑的模态内容 for templates */
-#templatesModal .modal-content { width: min(920px, 100%); padding: 18px; }
+#templatesModal .modal-content {
+    width: min(920px, 100%);
+    padding: 18px;
+}
 
 /* 模板表格可滚动容器，保证在模态内可独立滚动 */
 .templates-table-wrapper {
@@ -777,13 +835,17 @@ small {
 }
 
 /* 模板编辑表单使脚本区域更大 */
-#templateEditModal textarea { min-height: 200px; font-family: JetBrains Mono, Consolas, monospace; font-size: 13px; }
+#templateEditModal textarea {
+    min-height: 200px;
+    font-family: JetBrains Mono, Consolas, monospace;
+    font-size: 13px;
+}
 
 /* 预览区域统一样式（替换内联样式） */
 #templatePreviewContent {
     white-space: pre-wrap;
-    background: #0f172a;
-    color: #f8fafc;
+    background: var(--preview-bg);
+    color: var(--preview-text);
     padding: 16px;
     border-radius: 8px;
     max-height: 60vh;
@@ -798,17 +860,10 @@ small {
 }
 
 /* 让表头在模态内滚动时保持可见 */
-.simple-table thead th { position: sticky; top: 0; z-index: 12; }
-
-#templateSelect:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-#templateSelect:not([value=""]) {
-    border-color: var(--primary);
-    background: rgba(59, 130, 246, 0.05);
+.simple-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 12;
 }
 
 /* 响应式设计 */

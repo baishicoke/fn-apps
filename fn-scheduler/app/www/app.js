@@ -10,6 +10,20 @@ const state = {
   defaultAccount: "",
 };
 
+// 依赖 index.html 中暴露的 window.__i18n
+function _t(key, vars) {
+  try {
+    const fn = window.__i18n && window.__i18n.translate;
+    let msg = typeof fn === 'function' ? fn(key) : key;
+    if (vars && typeof vars === 'object') {
+      Object.keys(vars).forEach(k => {
+        msg = msg.replace(new RegExp(`\\{${k}\\}`, 'g'), String(vars[k]));
+      });
+    }
+    return msg;
+  } catch (e) { return key; }
+}
+
 const AUTO_REFRESH_INTERVAL = 5000; // 5 seconds
 let autoRefreshTimer = null;
 
@@ -49,7 +63,7 @@ async function loadTemplates() {
   try {
     // 从后端获取数据库中的模板
     const resp = await fetch('/api/templates');
-    if (!resp.ok) throw new Error(`加载模板失败: ${resp.status}`);
+    if (!resp.ok) throw new Error(_t('error.load_templates', { status: resp.status }));
     const payload = await resp.json();
     // payload.data 为数组形式
     taskTemplates = {};
@@ -84,7 +98,7 @@ function renderTemplateOptions() {
   select.innerHTML = '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = '无模板（自定义）';
+  placeholder.textContent = _t('template.placeholder');
   select.appendChild(placeholder);
   Object.keys(taskTemplates || {}).forEach((key) => {
     const tpl = taskTemplates[key];
@@ -114,7 +128,7 @@ async function refreshTemplatesList() {
     }
     renderTemplatesTable();
   } catch (err) {
-    showToast(`加载模板列表失败：${err.message}`, true);
+    showToast(_t('error.export_templates', { err: err.message }), true);
   }
 }
 
@@ -197,12 +211,12 @@ function openTemplateEditModal(editing = null) {
   if (!form || !modal) return;
   form.reset();
   if (editing) {
-    title.textContent = `编辑模板：${editing.name}`;
+    title.textContent = `${_t('btn.edit')}：${editing.name}`;
     form.key.value = editing.key || '';
     form.name.value = editing.name || '';
     form.script_body.value = editing.script_body || '';
   } else {
-    title.textContent = '新增模板';
+    title.textContent = _t('btn.add');
   }
   openModal(modal);
 }
@@ -229,31 +243,31 @@ async function saveTemplateFromForm(ev) {
   try {
     if (templatesState.editingId) {
       await api.updateTemplate(templatesState.editingId, data);
-      showToast('模板已更新');
+      showToast(_t('template.updated'));
     } else {
       await api.createTemplate(data);
-      showToast('模板已创建');
+      showToast(_t('template.created'));
     }
     closeModal(document.getElementById('templateEditModal'));
     refreshTemplatesList();
     await loadTemplates();
   } catch (err) {
-    showToast(`保存模板失败：${err.message}`, true);
+    showToast(_t('error.save_template', { err: err.message }), true);
   }
 }
 
 async function deleteSelectedTemplate() {
   const id = templatesState.selectedId;
-  if (!id) { showToast('请先选择模板'); return; }
-  if (!window.confirm('确认删除所选模板？')) { return; }
+  if (!id) { showToast(_t('prompt.select_template')); return; }
+  if (!window.confirm(_t('confirm.delete_template'))) { return; }
   try {
     await api.deleteTemplate(id);
     templatesState.selectedId = null;
     refreshTemplatesList();
     await loadTemplates();
-    showToast('模板已删除');
+    showToast(_t('template.deleted'));
   } catch (err) {
-    showToast(`删除失败：${err.message}`, true);
+    showToast(_t('error.delete_template', { err: err.message }), true);
   }
 }
 
@@ -271,7 +285,7 @@ async function exportTemplatesToFile() {
     a.remove();
     URL.revokeObjectURL(url);
   } catch (err) {
-    showToast(`导出失败：${err.message}`, true);
+    showToast(_t('error.export_templates', { err: err.message }), true);
   }
 }
 
@@ -284,13 +298,13 @@ function bindTemplateImportFile() {
     try {
       const text = await f.text();
       const obj = JSON.parse(text);
-      if (typeof obj !== 'object') throw new Error('文件格式不正确');
+      if (typeof obj !== 'object') throw new Error(_t('file.invalid_format'));
       const resp = await api.importTemplates(obj);
-      showToast(`导入完成：新增 ${resp.imported.inserted}，更新 ${resp.imported.updated}`);
+      showToast(_t('file.import_result', { inserted: resp.imported.inserted, updated: resp.imported.updated }));
       refreshTemplatesList();
       await loadTemplates();
     } catch (err) {
-      showToast(`导入失败：${err.message}`, true);
+      showToast(_t('file.import_failed', { err: err.message }), true);
     } finally {
       fileInput.value = '';
     }
@@ -338,27 +352,27 @@ CRON_FIELDS.forEach((field) => {
 });
 
 const statusMap = {
-  success: { label: "成功", className: "status-success" },
-  failed: { label: "失败", className: "status-failed" },
-  running: { label: "运行中", className: "status-running" },
+  success: { label: 'status.success', className: "status-success" },
+  failed: { label: 'status.failed', className: "status-failed" },
+  running: { label: 'status.running', className: "status-running" },
 };
 
 const triggerMap = {
-  schedule: "定时",
-  event: "事件",
+  schedule: 'trigger.schedule',
+  event: 'trigger.event',
 };
 
 const eventTypeMap = {
-  script: "条件脚本",
-  system_boot: "系统开机",
-  system_shutdown: "系统关机",
+  script: 'event.script',
+  system_boot: 'event.system_boot',
+  system_shutdown: 'event.system_shutdown',
 };
 
-// 响应式短标签（用于窄屏显示）
+// 响应式短标签（用于窄屏显示），存放为 i18n 键
 const eventTypeShortMap = {
-  script: "脚本",
-  system_boot: "开机",
-  system_shutdown: "关机",
+  script: 'event.short.script',
+  system_boot: 'event.short.system_boot',
+  system_shutdown: 'event.short.system_shutdown',
 };
 
 function isNarrow() {
@@ -366,8 +380,8 @@ function isNarrow() {
 }
 
 function getEventLabel(key) {
-  if (isNarrow()) return eventTypeShortMap[key] || eventTypeMap[key] || key;
-  return eventTypeMap[key] || key;
+  if (isNarrow()) return _t(eventTypeShortMap[key] || eventTypeMap[key] || key);
+  return _t(eventTypeMap[key] || key);
 }
 
 function escapeHtml(value = "") {
@@ -482,37 +496,40 @@ function renderTasks() {
   } else {
     elements.emptyState.classList.add("hidden");
   }
+
   tasks.forEach((task) => {
     const tr = document.createElement("tr");
     tr.dataset.id = task.id;
     if (state.selectedIds.has(task.id)) {
       tr.classList.add("selected");
     }
+
     const latestResult = task.latest_result;
     const status = statusMap[latestResult?.status] || {
-      label: "无记录",
+      label: "status.no_record",
       className: "status-unknown",
     };
+    const statusLabel = _t(status.label);
     const safeName = escapeHtml(task.name);
     const safeAccount = escapeHtml(task.account);
-    let triggerLabel = triggerMap[task.trigger_type] || task.trigger_type;
+    let triggerLabel = _t(triggerMap[task.trigger_type] || task.trigger_type);
     if (task.trigger_type === "event") {
-      const subtype = getEventLabel(task.event_type) || "事件";
-      // 窄屏上省略主标签“事件”，仅显示子类型（如“开机/关机/脚本”）
+      const subtype = getEventLabel(task.event_type) || _t('trigger.event');
       if (isNarrow()) {
         triggerLabel = subtype;
       } else {
         triggerLabel = `${triggerLabel} · ${subtype}`;
       }
     }
+
     tr.innerHTML = `
-            <td><span class="badge ${task.is_active ? "badge-active" : "badge-paused"}">${task.is_active ? "已启动" : "已停用"}</span></td>
+            <td><span class="badge ${task.is_active ? "badge-active" : "badge-paused"}">${task.is_active ? _t('status.enabled') : _t('status.disabled')}</span></td>
             <td>
                 <div class="task-name">${safeName}</div>
             </td>
             <td>${escapeHtml(formatDate(task.next_run_at))}</td>
                 <td><span class="trigger-label">${escapeHtml(triggerLabel)}</span></td>
-            <td><span class="status-pill ${status.className}">${status.label}</span></td>
+            <td><span class="status-pill ${status.className}">${escapeHtml(statusLabel)}</span></td>
             <td>${safeAccount}</td>
         `;
     elements.tableBody.appendChild(tr);
@@ -588,13 +605,13 @@ function renderAccountOptions(selectedAccount = "") {
   if (state.accountLoading) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "加载中...";
+    option.textContent = _t('loading');
     option.disabled = true;
     option.selected = true;
     select.appendChild(option);
     select.disabled = true;
     if (statusEl) {
-      statusEl.textContent = "正在获取可用账号...";
+      statusEl.textContent = _t('loading_accounts');
     }
     return;
   }
@@ -602,15 +619,15 @@ function renderAccountOptions(selectedAccount = "") {
   if (!state.accounts.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = state.posixSupported ? "无可用账号" : "暂不可用";
+    option.textContent = state.posixSupported ? _t('no_accounts') : _t('not_available');
     option.disabled = true;
     option.selected = true;
     select.appendChild(option);
     select.disabled = true;
     if (statusEl) {
       statusEl.textContent = state.posixSupported
-        ? "未找到属于系统组 0 / 1000 / 1001 的账号"
-        : "Windows 环境未能检测到当前用户，请重新登录后再试";
+        ? _t('account.not_found_posix')
+        : _t('account.windows_not_detected');
     }
     return;
   }
@@ -619,7 +636,7 @@ function renderAccountOptions(selectedAccount = "") {
     const defaultAccount = state.accounts[0] || state.defaultAccount || "";
     const option = document.createElement("option");
     option.value = defaultAccount;
-    option.textContent = defaultAccount || "当前登录账号";
+    option.textContent = defaultAccount || _t('label.current_logged_in_account');
     option.selected = true;
     select.appendChild(option);
     select.disabled = true;
@@ -638,7 +655,7 @@ function renderAccountOptions(selectedAccount = "") {
   if (legacyAccount) {
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = `${legacyAccount}（需重新选择）`;
+    placeholder.textContent = `${legacyAccount} ${_t('placeholder.needs_reselect')}`;
     placeholder.disabled = true;
     placeholder.selected = true;
     select.appendChild(placeholder);
@@ -665,7 +682,7 @@ function renderAccountOptions(selectedAccount = "") {
     for (const opt of el.options) {
       const v = opt.value;
       if (v === 'script' || v === 'system_boot' || v === 'system_shutdown') {
-        opt.textContent = useShort ? (eventTypeShortMap[v] || eventTypeMap[v]) : (eventTypeMap[v] || eventTypeShortMap[v]);
+        opt.textContent = useShort ? _t(eventTypeShortMap[v] || eventTypeMap[v]) : _t(eventTypeMap[v] || eventTypeShortMap[v]);
       }
     }
   }
@@ -687,7 +704,7 @@ function renderAccountOptions(selectedAccount = "") {
 
   if (statusEl) {
     statusEl.textContent = legacyAccount
-      ? `当前任务账号 ${legacyAccount} 不在允许范围，请重新选择`
+      ? _t('error.task_account_not_allowed', { acc: legacyAccount })
       : "";
   }
 }
@@ -724,7 +741,7 @@ async function loadAccounts({ showError = true, preferredAccount = "" } = {}) {
     }
   } catch (error) {
     if (showError) {
-      showToast(`加载账号失败：${error.message}`, true);
+      showToast(_t('error.load_accounts', { err: error.message }), true);
     }
   } finally {
     state.accountLoading = false;
@@ -772,7 +789,7 @@ function openTaskModal(task = null) {
   }
   populatePreTaskOptions(state.editingTaskId, task?.pre_task_ids || []);
   if (task) {
-    elements.taskModalTitle.textContent = `编辑任务：${task.name}`;
+    elements.taskModalTitle.textContent = `${_t('btn.edit')}：${task.name}`;
     elements.taskForm.name.value = task.name;
     elements.triggerTypeSelect.value = task.trigger_type;
     elements.eventTypeSelect.value = task.event_type || "script";
@@ -784,7 +801,7 @@ function openTaskModal(task = null) {
     elements.taskForm.condition_interval.value = task.condition_interval || 60;
     elements.taskForm.script_body.value = task.script_body || "";
   } else {
-    elements.taskModalTitle.textContent = "新建任务";
+    elements.taskModalTitle.textContent = _t('modal.task.new');
     elements.eventTypeSelect.value = "script";
     elements.taskForm.condition_interval.value = 60;
     if (elements.scheduleInput) {
@@ -848,7 +865,7 @@ function updateCronPreview() {
   if (elements.cronNextTimes) {
     const result = getNextCronTimes(expression, 2);
     if (!result.valid) {
-      elements.cronNextTimes.textContent = "表达式无效";
+      elements.cronNextTimes.textContent = _t('cron.invalid');
       elements.cronNextTimes.classList.add("cron-invalid");
       if (elements.cronPreview) {
         elements.cronPreview.classList.add("cron-invalid");
@@ -866,7 +883,7 @@ function updateCronPreview() {
       }
       if (result.times.length) {
         elements.cronNextTimes.innerHTML =
-          "执行时间预览：" +
+          _t('cron.preview') +
           result.times.map((t) => `<div>${t}</div>`).join("");
       } else {
         elements.cronNextTimes.textContent = "";
@@ -875,7 +892,7 @@ function updateCronPreview() {
         const hint = document.createElement("div");
         hint.className = "muted";
         hint.style.marginTop = "6px";
-        hint.textContent = `已超出搜索范围（${result.maxMonths} 个月），可能在更远时间触发`;
+        hint.textContent = _t('cron.search_exceeded', { months: result.maxMonths });
         elements.cronNextTimes.appendChild(hint);
       }
     }
@@ -1037,42 +1054,40 @@ async function handleFormSubmit(event) {
   try {
     const payload = collectFormData();
     if (!payload.name || !payload.account || !payload.script_body) {
-      throw new Error("请完整填写必填字段");
+      throw new Error(_t('validation.required_fields'));
     }
     if (state.accountLoading) {
-      throw new Error("账号列表加载中，请稍后重试");
+      throw new Error(_t('validation.accounts_loading'));
     }
     if (!state.accounts.length) {
       if (state.posixSupported) {
-        throw new Error(
-          "未找到可用账号，请确认系统组 0 / 1000 / 1001 中存在账号",
-        );
+        throw new Error(_t('validation.no_accounts_posix'));
       }
-      throw new Error("未能检测到默认账号，请重新登录或刷新页面");
+      throw new Error(_t('validation.no_default_account'));
     }
     if (!state.posixSupported) {
       payload.account =
         state.accounts[0] || state.defaultAccount || payload.account;
     } else if (!state.accounts.includes(payload.account)) {
-      throw new Error("请选择属于系统组 0 / 1000 / 1001 的账号");
+      throw new Error(_t('validation.account_not_in_group'));
     }
     if (payload.trigger_type === "schedule" && !payload.schedule_expression) {
-      throw new Error("Cron 表达式不能为空");
+      throw new Error(_t('validation.cron_required'));
     }
     if (payload.trigger_type === "event") {
       if (!payload.event_type) {
         payload.event_type = "script";
       }
       if (payload.event_type === "script" && !payload.condition_script) {
-        throw new Error("请填写条件脚本");
+        throw new Error(_t('validation.script_required'));
       }
     }
     if (state.editingTaskId) {
       await api.updateTask(state.editingTaskId, payload);
-      showToast("任务已更新");
+      showToast(_t('msg.task_updated'));
     } else {
       await api.createTask(payload);
-      showToast("任务已创建");
+      showToast(_t('msg.task_created'));
     }
     closeModal(elements.taskModal);
     state.selectedIds.clear();
@@ -1095,7 +1110,7 @@ async function loadTasks({ silent = false } = {}) {
     renderTasks();
   } catch (error) {
     if (!silent) {
-      showToast(`加载任务失败：${error.message}`, true);
+      showToast(_t('error.load_tasks', { err: error.message }), true);
     } else {
       console.error("自动刷新任务失败", error);
     }
@@ -1116,10 +1131,10 @@ function startAutoRefresh() {
 async function deleteSelectedTasks() {
   const selected = Array.from(state.selectedIds);
   if (!selected.length) {
-    showToast("请先选择任务");
+    showToast(_t('prompt.select_task'));
     return;
   }
-  if (!window.confirm(`确认删除选中的 ${selected.length} 个任务？`)) {
+  if (!window.confirm(_t('confirm.delete_selected_tasks', { n: selected.length }))) {
     return;
   }
   try {
@@ -1130,11 +1145,10 @@ async function deleteSelectedTasks() {
     const missingCount = missing.length;
     state.selectedIds.clear();
     await loadTasks();
-    let message = deletedCount ? `已删除 ${deletedCount} 个任务` : "";
-    if (missingCount) {
-      message += `${message ? "；" : ""}${missingCount} 个任务不存在`;
-    }
-    showToast(message || "未删除任何任务");
+    let parts = [];
+    if (deletedCount) parts.push(_t('msg.deleted_n', { n: deletedCount }));
+    if (missingCount) parts.push(_t('msg.missing_n', { n: missingCount }));
+    showToast(parts.join(_t('list.sep')) || _t('msg.no_tasks_deleted'));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1143,7 +1157,7 @@ async function deleteSelectedTasks() {
 async function runSelectedTasks() {
   const selected = Array.from(state.selectedIds);
   if (!selected.length) {
-    showToast("请选择要运行的任务");
+    showToast(_t('prompt.select_task_to_run'));
     return;
   }
   try {
@@ -1155,11 +1169,11 @@ async function runSelectedTasks() {
     const blockedCount = blocked.length;
     const missingCount = missing.length;
     const parts = [];
-    if (queuedCount) { parts.push(`已触发 ${queuedCount} 个任务`); }
-    if (runningCount) { parts.push(`${runningCount} 个任务正在执行`); }
-    if (blockedCount) { parts.push(`${blockedCount} 个任务等待前置完成`); }
-    if (missingCount) { parts.push(`${missingCount} 个任务不存在`); }
-    showToast(parts.join("；") || "未触发任何任务");
+    if (queuedCount) parts.push(_t('msg.triggered_n', { n: queuedCount }));
+    if (runningCount) parts.push(_t('msg.running_n', { n: runningCount }));
+    if (blockedCount) parts.push(_t('msg.blocked_n', { n: blockedCount }));
+    if (missingCount) parts.push(_t('msg.missing_n', { n: missingCount }));
+    showToast(parts.join(_t('list.sep')) || _t('msg.no_tasks_triggered'));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1168,7 +1182,7 @@ async function runSelectedTasks() {
 async function toggleSelectedTask() {
   const selected = Array.from(state.selectedIds);
   if (!selected.length) {
-    showToast("请选择任务");
+    showToast(_t('prompt.select_task'));
     return;
   }
   try {
@@ -1176,7 +1190,7 @@ async function toggleSelectedTask() {
       selected.includes(task.id),
     );
     if (!selectedTasks.length) {
-      throw new Error("任务不存在");
+      throw new Error(_t('error.task_not_found'));
     }
     const shouldEnable = selectedTasks.some((task) => !task.is_active);
     const action = shouldEnable ? "enable" : "disable";
@@ -1187,12 +1201,12 @@ async function toggleSelectedTask() {
     const unchangedCount = unchanged.length;
     const missingCount = missing.length;
     await loadTasks();
-    const verb = shouldEnable ? "启用" : "停用";
+    const verb = shouldEnable ? _t('verb.enable') : _t('verb.disable');
     const parts = [];
-    if (updatedCount) { parts.push(`已${verb} ${updatedCount} 个任务`); }
-    if (unchangedCount) { parts.push(`${unchangedCount} 个任务状态本已满足`); }
-    if (missingCount) { parts.push(`${missingCount} 个任务不存在`); }
-    showToast(parts.join("；") || `没有任务完成${verb}`);
+    if (updatedCount) parts.push(_t('msg.action_completed', { verb, n: updatedCount }));
+    if (unchangedCount) parts.push(_t('msg.unchanged_count', { n: unchangedCount }));
+    if (missingCount) parts.push(_t('msg.missing_n', { n: missingCount }));
+    showToast(parts.join(_t('list.sep')) || _t('msg.no_tasks_completed', { verb }));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1201,13 +1215,13 @@ async function toggleSelectedTask() {
 async function openResultModal() {
   const selected = Array.from(state.selectedIds);
   if (selected.length !== 1) {
-    showToast("请选择单个任务");
+    showToast(_t('prompt.select_single_task'));
     return;
   }
   const taskId = selected[0];
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) {
-    showToast("任务不存在", true);
+    showToast(_t('error.task_not_found'), true);
     return;
   }
   state.currentResultTaskId = taskId;
@@ -1229,7 +1243,7 @@ async function refreshResults() {
 function renderResults(results) {
   elements.resultList.innerHTML = "";
   if (!results.length) {
-    elements.resultList.innerHTML = '<p class="empty">暂无执行记录</p>';
+    elements.resultList.innerHTML = `<p class="empty">${_t('results.no_records')}</p>`;
     return;
   }
   results.forEach((result) => {
@@ -1239,14 +1253,21 @@ function renderResults(results) {
     };
     const card = document.createElement("article");
     card.className = "result-card";
+    // translate status label and trigger reason (try trigger.<reason> then fallback)
+    const statusText = _t(status.label);
+    let reasonKey = `trigger.${result.trigger_reason}`;
+    let reasonText = _t(reasonKey);
+    if (reasonText === reasonKey) {
+      reasonText = result.trigger_reason || "";
+    }
     card.innerHTML = `
             <header>
                 <div>
-                    <div class="status-pill ${status.className}">${status.label}</div>
-                    <span class="muted">触发：${escapeHtml(result.trigger_reason)}</span>
+                    <div class="status-pill ${status.className}">${escapeHtml(statusText)}</div>
+                    <span class="muted">${_t('label.trigger')}${escapeHtml(reasonText)}</span>
                 </div>
-                <div class="muted">${escapeHtml(formatDate(result.started_at))} - ${escapeHtml(formatDate(result.finished_at))}</div>
-                <button class="ghost" data-delete="${result.id}">删除</button>
+                  <div class="muted">${escapeHtml(formatDate(result.started_at))} - ${escapeHtml(formatDate(result.finished_at))}</div>
+                  <button class="ghost" data-delete="${result.id}">${_t('btn.delete')}</button>
             </header>
             <pre>${escapeHtml(result.log || "")}</pre>
         `;
@@ -1264,13 +1285,13 @@ function renderResults(results) {
 
 async function clearResultHistory() {
   if (!state.currentResultTaskId) { return; }
-  if (!window.confirm("确认清空该任务的全部历史记录？")) {
+  if (!window.confirm(_t('confirm.clear_results'))) {
     return;
   }
   try {
     await api.clearResults(state.currentResultTaskId);
     await refreshResults();
-    showToast("执行记录已清空");
+    showToast(_t('msg.results_cleared'));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1308,7 +1329,7 @@ function attachEventListeners() {
   buttons.edit.addEventListener("click", () => {
     const selected = getSelectedTasks();
     if (selected.length !== 1) {
-      showToast("请选择单个任务");
+      showToast(_t('prompt.select_single_task'));
       return;
     }
     openTaskModal(selected[0]);
@@ -1405,7 +1426,7 @@ function attachEventListeners() {
         const template = taskTemplates[templateKey];
         // 仅替换任务内容，不修改名称、触发方式或其它字段
         elements.taskForm.script_body.value = template.script_body;
-        showToast(`已应用模板：${template.name}（仅替换任务内容）`);
+        showToast(_t('msg.template_applied', { name: template.name }));
       } else {
         // 选择“无模板（自定义）”时不做其它自动清理，仅保留当前用户输入
       }
@@ -1420,9 +1441,9 @@ if (addTplBtn) addTplBtn.addEventListener('click', () => openTemplateEditModal(n
 const editTplBtn = document.getElementById('btnEditTemplate');
 if (editTplBtn) editTplBtn.addEventListener('click', () => {
   const id = templatesState.selectedId;
-  if (!id) { showToast('请选择要编辑的模板'); return; }
+  if (!id) { showToast(_t('prompt.select_template_to_edit')); return; }
   const tpl = templatesState.templates.find(t => Number(t.id) === Number(id));
-  if (!tpl) { showToast('模板未找到'); return; }
+  if (!tpl) { showToast(_t('error.template_not_found')); return; }
   openTemplateEditModal(tpl);
 });
 const delTplBtn = document.getElementById('btnDeleteTemplate');
@@ -1437,9 +1458,9 @@ if (impTplBtn) impTplBtn.addEventListener('click', () => {
 const previewBtn = document.getElementById('btnPreviewTemplate');
 if (previewBtn) previewBtn.addEventListener('click', () => {
   const id = templatesState.selectedId;
-  if (!id) { showToast('请选择一个模板以预览'); return; }
+  if (!id) { showToast(_t('prompt.select_template_to_preview')); return; }
   const tpl = templatesState.templates.find(t => Number(t.id) === Number(id));
-  if (!tpl) { showToast('模板未找到'); return; }
+  if (!tpl) { showToast(_t('error.template_not_found')); return; }
   openTemplatePreview(tpl);
 });
 const tplForm = document.getElementById('templateForm');
