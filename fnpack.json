@@ -4,104 +4,119 @@
     "desc": "code-server 是 VS Code 的在线版本，允许您通过浏览器进行代码编辑和开发。",
     "labels": "工具",
     "version": "1.0.0",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-codeserver_v1.0.0.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-codeserver_v1.0.0.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.016",
     "history": {
-      "v1.0.0": "Initial release of code-server package."
+      "v1.0.0": "Initial release of fn-codeserver package."
     }
   },
   "fn-kodi": {
-    "display_name": "Kodi",
+    "display_name": "kodi",
     "desc": "Kodi 是一个免费且开源的媒体播放器软件，用于播放视频、音频和图像。",
-    "labels": "媒体",
+    "labels": "工具",
     "version": "1.0.1",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-kodi_v1.0.1.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-kodi_v1.0.1.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.026",
     "history": {
-      "v1.0.1": "Initial release of Kodi package."
+      "v1.0.1": "Initial release of fn-kodi package."
     }
   },
   "fn-msedge": {
     "display_name": "msedge",
-    "desc": "Microsoft Edge 是微软开发的一款基于 Chromium 内核的现代网页浏览器，提供快速、安全的浏览体验。",
-    "labels": "浏览器",
+    "desc": "Microsoft Edge 是一款由 Microsoft 开发、基于 Chromium 的跨平台网页浏览器。",
+    "labels": "工具",
     "version": "1.0.2",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-msedge_v1.0.2.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-msedge_v1.0.2.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.076",
     "history": {
-      "v1.0.2": "Initial release of Microsoft Edge package."
+      "v1.0.2": "Initial release of fn-msedge package."
     }
   },
   "fn-open-vm-tools": {
     "display_name": "open-vm-tools",
-    "desc": "Open VM Tools 是 VMware 虚拟机的开源工具套件，提供增强的虚拟机性能和用户体验。",
-    "labels": "系统工具",
+    "desc": "Open-VM-Tools 是 VMware Tools 的开源替代品，旨在为运行在 VMware 环境中的虚拟机提供更好的性能和用户体验。",
+    "labels": "工具",
     "version": "1.0.3",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-open-vm-tools_v1.0.3.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-open-vm-tools_v1.0.3.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.057",
     "history": {
-      "v1.0.3": "Initial release of Open VM Tools package."
+      "v1.0.3": "Initial release of fn-open-vm-tools package."
     }
   },
   "fn-qemu-ga": {
     "display_name": "qemu-ga",
-    "desc": "QEMU Guest Agent 是 QEMU 虚拟化环境中的一个守护进程，提供虚拟机与宿主机之间的通信和管理功能。",
-    "labels": "系统工具",
+    "desc": "QEMU Guest Agent 是一个运行在虚拟机内部的守护进程，旨在通过与虚拟化主机的交互，执行一系列操作以增强虚拟机的管理能力。",
+    "labels": "工具",
     "version": "1.0.3",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-qemu-ga_v1.0.3.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-qemu-ga_v1.0.3.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.054",
     "history": {
-      "v1.0.3": "Initial release of QEMU Guest Agent package."
+      "v1.0.3": "Initial release of fn-qemu-ga package."
     }
   },
   "fn-scheduler": {
     "display_name": "任务计划",
     "desc": "轻量级的任务计划应用，支持定时和条件触发任务执行。",
-    "labels": "系统工具",
+    "labels": "工具",
     "version": "1.1.0",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-scheduler_v1.1.0.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-scheduler_v1.1.0.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.193",
     "history": {
-      "v1.1.0": "Initial release of Scheduler package."
+      "v1.1.0": "Initial release of fn-scheduler package."
     }
   },
   "fn-sshd-config": {
     "display_name": "sshd-config",
     "desc": "设置 root 用户密码，修改 SSHD 配置.",
-    "labels": "系统工具",
+    "labels": "工具",
     "version": "1.0.1",
-    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1503/fn-sshd-config_v1.0.1.fpk",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-sshd-config_v1.0.1.fpk",
     "author": "Ing",
     "author_url": "https://github.com/RROrg/fn-apps",
     "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
-    "install_type": "系统空间",
-    "size": "0.01",
+    "install_type": "root",
+    "size": " 0.037",
     "history": {
-      "v1.0.1": "Initial release of SSH Config package."
+      "v1.0.1": "Initial release of fn-sshd-config package."
+    }
+  },
+  "fn-terminal": {
+    "display_name": "terminal",
+    "desc": "terminal (ttyd + tmux)",
+    "labels": "工具",
+    "version": "1.0.3",
+    "download_url": "https://github.com/RROrg/fn-apps/releases/download/2025.12.22-1936/fn-terminal_v1.0.3.fpk",
+    "author": "Ing",
+    "author_url": "https://github.com/RROrg/fn-apps",
+    "bug_report_url": "https://github.com/RROrg/fn-apps/issues",
+    "install_type": "root",
+    "size": " 0.031",
+    "history": {
+      "v1.0.3": "Initial release of fn-terminal package."
     }
   }
 }
