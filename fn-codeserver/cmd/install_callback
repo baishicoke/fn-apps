@@ -1,0 +1,50 @@
+#!/bin/bash
+
+### This script is called after the user installs the application.
+
+export HOME="${TRIM_PKGVAR}"
+curl -fsSL https://code-server.dev/install.sh | sh -s -- --method standalone --prefix "${TRIM_APPDEST}/server"
+[ $? -ne 0 ] && {
+  echo "install code-server failed"
+  exit 1
+}
+
+FILE=$(find ${TRIM_APPDEST}/server/lib/ -name product.json | head -1)
+[ -z "${FILE}" ] && {
+  echo "product.json not found"
+  exit 1
+}
+
+cp "${FILE}" "${FILE}.bak"
+jq '
+  if (.linkProtectionTrustedDomains? | index("https://marketplace.visualstudio.com")) then
+    . 
+  else
+    .linkProtectionTrustedDomains = ((.linkProtectionTrustedDomains // []) + ["https://marketplace.visualstudio.com"]) 
+  end
+' "$FILE" >"$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+
+jq '
+  def gallery: {
+    "serviceUrl":"https://marketplace.visualstudio.com/_apis/public/gallery",
+    "cacheUrl":"https://vscode.blob.core.windows.net/gallery/index",
+    "itemUrl":"https://marketplace.visualstudio.com/items",
+    "controlUrl":"",
+    "recommendationsUrl":""
+  };
+  if has("extensionsGallery") then
+    .
+  elif has("linkProtectionTrustedDomains") then
+    (to_entries
+     | reduce .[] as $e ( []; 
+         if $e.key=="linkProtectionTrustedDomains" then . + [$e, {key:"extensionsGallery", value:gallery}] 
+         else . + [$e] 
+         end
+       )
+     | from_entries)
+  else
+    . + {extensionsGallery: gallery}
+  end
+' "$FILE" >"$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+
+exit 0
