@@ -4,13 +4,8 @@
         "items": [
             {
                 "type": "tips",
-                "helpText": "轻量级的任务计划应用，支持定时和条件触发任务执行。"
-            }
-        ]
-    },
-    {
-        "stepTitle": "用户配置",
-        "items": [
+                "helpText": "任务计划应用的安装向导，用于设置应用的账号、密码和端口号。"
+            },
             {
                 "type": "text",
                 "field": "wizard_username",
@@ -41,12 +36,7 @@
                         "message": "密码长度不能少于4位"
                     }
                 ]
-            }
-        ]
-    },
-    {
-        "stepTitle": "应用配置",
-        "items": [
+            },
             {
                 "type": "text",
                 "field": "wizard_port",

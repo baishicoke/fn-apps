@@ -1,5 +1,5 @@
 appname               = fn-msedge
-version               = 1.0.2
+version               = 1.0.3
 display_name          = msedge
 desc                  = Microsoft Edge 是一款由 Microsoft 开发、基于 Chromium 的跨平台网页浏览器。
 arch                  = x86_64

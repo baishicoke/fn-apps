@@ -11,21 +11,9 @@
             "allUsers": false,
             "control": {
                 "accessPerm": "readonly",
-                "pathPerm": "readonly"
-            }
-        },
-        "fn-msedge.ApplicationWeb": {
-            "title": "msedge Web",
-            "desc": "msedge Web",
-            "icon": "images/icon_{0}.png",
-            "type": "url",
-            "protocol": "https",
-            "port": "4001",
-            "url": "/",
-            "allUsers": false,
-            "control": {
-                "accessPerm": "readonly",
-                "pathPerm": "readonly"
+                "portPerm":"readonly",
+                "pathPerm": "readonly",
+                "fullUrlPerm":"readonly"
             }
         }
     }

@@ -7,13 +7,13 @@ services:
       - PGID=${TRIM_GID}
       - TZ=Asia/Shanghai
       - LC_ALL=zh_CN.UTF-8
-      - CUSTOM_USER=${wizard_username}
-      - PASSWORD=${wizard_password}
+      - CUSTOM_USER=${wizard_username:-admin}
+      - PASSWORD=${wizard_password:-admin}
     volumes:
       - /var/apps/fn-msedge/shares/msedge/config:/config
     ports:
-      - 4000:3000
-      - 4001:3001
+      - ${wizard_http_port:-4000}:3000
+      - ${wizard_https_port:-4001}:3001
     shm_size: "1gb"
     restart: unless-stopped
     networks:

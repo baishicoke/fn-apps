@@ -3,8 +3,16 @@
 ### This script is called after the user change environment variables in application setting page.
 
 TTYD_CONF="${TRIM_APPDEST}/server/etc/terminal_ttyd.conf"
+sed -i "s/^-p .*$/-p ${wizard_port:-17681}/" "${TTYD_CONF}"
 sed -i "/^-c .*$/d" "${TTYD_CONF}"
 [ -n "$(tail -n 1 "${TTYD_CONF}")" ] && echo "" >> "${TTYD_CONF}"  # If the last line is not empty, add a new line
 echo "-c ${wizard_username:-admin}:${wizard_password:-admin}" >> "${TTYD_CONF}"
+
+# Update configuration based on wizard inputs
+sed -i "s|\"protocol\":.*,$|\"protocol\": \"${wizard_protocol:-http}\",|g" ${TRIM_APPDEST}/ui/config
+sed -i "s|\"port\":.*,$|\"port\": \"${wizard_port:-17681}\",|g" ${TRIM_APPDEST}/ui/config
+sed -i "s|\"url\":.*,$|\"url\": \"${wizard_base_path:-/}\",|g" ${TRIM_APPDEST}/ui/config
+
+psql -U postgres -d appcenter -c "UPDATE app_service SET url='${wizard_protocol:-http}://\${host}:${wizard_port:-17681}${wizard_base_path:-/}', default_url='${wizard_protocol:-http}://\${host}:${wizard_port:-17681}${wizard_base_path:-/}' WHERE service_name LIKE '${TRIM_APPNAME}.%';"
 
 exit 0

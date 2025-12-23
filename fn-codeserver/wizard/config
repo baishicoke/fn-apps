@@ -4,7 +4,7 @@
         "items": [
             {
                 "type": "tips",
-                "helpText": "code-server 是 VS Code 的在线版本，允许您通过浏览器进行代码编辑和开发。"
+                "helpText": "code-server 应用的配置向导，用于设置应用的密码及端口号。"
             },
             {
                 "type": "password",

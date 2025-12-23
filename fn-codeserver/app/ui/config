@@ -1,7 +1,7 @@
 {
     ".url": {
         "fn-codeserver.Application": {
-            "title": "fn-codeserver",
+            "title": "codeserver",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
             "protocol": "http",
@@ -10,20 +10,9 @@
             "allUsers": false,
             "control": {
                 "accessPerm": "readonly",
-                "pathPerm": "readonly"
-            }
-        },
-        "fn-codeserver.ApplicationWeb": {
-            "title": "fn-codeserver",
-            "icon": "images/icon_{0}.png",
-            "type": "url",
-            "protocol": "http",
-            "port": "38356",
-            "url": "/",
-            "allUsers": false,
-            "control": {
-                "accessPerm": "readonly",
-                "pathPerm": "readonly"
+                "portPerm":"readonly",
+                "pathPerm": "readonly",
+                "fullUrlPerm":"readonly"
             }
         }
     }
