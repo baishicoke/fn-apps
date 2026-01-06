@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """Lightweight scheduler backend with REST API and static file hosting."""
 from __future__ import annotations
 

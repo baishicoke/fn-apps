@@ -32,8 +32,8 @@ jobs:
           curl -sSL https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64 -o fnpack
           sudo chmod +x fnpack
 
-          echo "| 应用名称 | 版本 | 描述 |" > apps-list.md
-          echo "|----------|------|------|" >> apps-list.md
+          echo "| 应用名称 | 版本 | 平台 | 描述 |" > apps-list.md
+          echo "|----------|------|------|------|" >> apps-list.md
 
           APPS=()
           for APP in fn-*; do
@@ -47,7 +47,9 @@ jobs:
             APPNAME=$(grep '^appname' "$APP/manifest" | awk -F= '{print $2}' | xargs)
             VERSION=$(grep '^version' "$APP/manifest" | awk -F= '{print $2}' | xargs)
             DESC=$(grep '^desc' "$APP/manifest" | awk -F= '{print $2}' | xargs)
-            echo "| ${APPNAME} | v${VERSION} | ${DESC} |" >> apps-list.md
+            PLATFORM=$(grep '^platform' "$APP/manifest" | awk -F= '{print $2}' | xargs)
+
+            echo "| ${APPNAME} | v${VERSION} | ${PLATFORM} | ${DESC} |" >> apps-list.md
 
             mv -f "${APPNAME}.fpk" "${APPNAME}_v${VERSION}.fpk"
 

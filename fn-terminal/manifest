@@ -1,8 +1,8 @@
 appname               = fn-terminal
-version               = 1.0.4
+version               = 1.0.5
 display_name          = terminal
 desc                  = terminal (ttyd + tmux)
-arch                  = x86_64
+platform              = all
 source                = thirdparty
 desktop_uidir         = ui
 desktop_applaunchname = fn-terminal.Application

@@ -11,8 +11,6 @@
             "allUsers": false,
             "control": {
                 "accessPerm": "readonly",
-                "portPerm":"readonly",
-                "pathPerm": "readonly",
                 "fullUrlPerm":"readonly"
             }
         }

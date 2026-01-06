@@ -62,7 +62,7 @@ let taskTemplates = {};
 async function loadTemplates() {
   try {
     // 从后端获取数据库中的模板
-    const resp = await fetch('/api/templates');
+    const resp = await fetch('api/templates');
     if (!resp.ok) throw new Error(_t('error.load_templates', { status: resp.status }));
     const payload = await resp.json();
     // payload.data 为数组形式
@@ -415,60 +415,60 @@ const api = {
     return payload;
   },
   listTasks() {
-    return this.request("/api/tasks");
+    return this.request("api/tasks");
   },
   listAccounts() {
-    return this.request("/api/accounts");
+    return this.request("api/accounts");
   },
   createTask(data) {
-    return this.request("/api/tasks", {
+    return this.request("api/tasks", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
   listTemplates() {
-    return this.request('/api/templates');
+    return this.request('api/templates');
   },
   createTemplate(data) {
-    return this.request('/api/templates', { method: 'POST', body: JSON.stringify(data) });
+    return this.request('api/templates', { method: 'POST', body: JSON.stringify(data) });
   },
   updateTemplate(id, data) {
-    return this.request(`/api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+    return this.request(`api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   },
   deleteTemplate(id) {
-    return this.request(`/api/templates/${id}`, { method: 'DELETE' });
+    return this.request(`api/templates/${id}`, { method: 'DELETE' });
   },
   importTemplates(mapping) {
-    return this.request('/api/templates/import', { method: 'POST', body: JSON.stringify(mapping) });
+    return this.request('api/templates/import', { method: 'POST', body: JSON.stringify(mapping) });
   },
   exportTemplates() {
-    return fetch('/api/templates/export').then((r) => r.json());
+    return fetch('api/templates/export').then((r) => r.json());
   },
   updateTask(id, data) {
-    return this.request(`/api/tasks/${id}`, {
+    return this.request(`api/tasks/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   },
   deleteTask(id) {
-    return this.request(`/api/tasks/${id}`, { method: "DELETE" });
+    return this.request(`api/tasks/${id}`, { method: "DELETE" });
   },
   runTask(id) {
-    return this.request(`/api/tasks/${id}/run`, { method: "POST" });
+    return this.request(`api/tasks/${id}/run`, { method: "POST" });
   },
   fetchResults(id) {
-    return this.request(`/api/tasks/${id}/results?limit=50`);
+    return this.request(`api/tasks/${id}/results?limit=50`);
   },
   deleteResult(id, resultId) {
-    return this.request(`/api/tasks/${id}/results/${resultId}`, {
+    return this.request(`api/tasks/${id}/results/${resultId}`, {
       method: "DELETE",
     });
   },
   clearResults(id) {
-    return this.request(`/api/tasks/${id}/results`, { method: "DELETE" });
+    return this.request(`api/tasks/${id}/results`, { method: "DELETE" });
   },
   batchTasks(action, taskIds, extra = {}) {
-    return this.request("/api/tasks/batch", {
+    return this.request("api/tasks/batch", {
       method: "POST",
       body: JSON.stringify({ action, task_ids: taskIds, ...extra }),
     });

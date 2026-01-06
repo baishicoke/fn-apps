@@ -25,15 +25,6 @@ stop_process() {
     systemctl stop open-vm-tools.service >> ${LOG_FILE} 2>&1
 }
 
-check_process() {
-    local pid=$1
-    if kill -0 "${pid}" 2>/dev/null; then
-        return 0  # process exist
-    else
-        return 1  # process not exist
-    fi
-}
-
 status() {
     systemctl status open-vm-tools.service
 }

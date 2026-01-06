@@ -1,8 +1,8 @@
 appname               = fn-codeserver
-version               = 1.0.1
+version               = 1.0.2
 display_name          = code-server
 desc                  = code-server 是 VS Code 的在线版本，允许您通过浏览器进行代码编辑和开发。
-arch                  = x86_64
+platform              = all
 source                = thirdparty
 desktop_uidir         = ui
 desktop_applaunchname = fn-codeserver.Application
