@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>fn-wifi-hotspot</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --surface: #ffffff;
+      --surface2: #f9fafb;
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 20px
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: .2px
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px
+    }
+
+    .msg {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 9999;
+      max-width: min(560px, calc(100vw - 32px));
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      opacity: .92;
+      color: var(--text);
+      display: none;
+      pointer-events: none;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .msg.show {
+      display: block;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: start
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .config-card {
+      min-width: 0
+    }
+
+    @media (max-width:860px) {
+      .layout {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .card h2 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .card .body {
+      padding: 12px 14px
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--surface)
+    }
+
+    form.grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px
+    }
+
+    @media (max-width:680px) {
+      form.grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .section-title {
+      grid-column: 1/-1;
+      margin-top: 4px;
+      padding-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 10px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    input:focus,
+    select:focus {
+      outline: 2px solid var(--surface2);
+      outline-offset: 1px
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface2);
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    #clients {
+      overflow: auto;
+      max-width: 100%;
+    }
+
+    .clients-empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 8px 2px;
+    }
+
+    table.clients {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface2);
+      font-size: 12px;
+    }
+
+    table.clients th,
+    table.clients td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    table.clients th {
+      color: var(--muted);
+      font-weight: 700;
+      background: var(--surface);
+    }
+
+    table.clients tr:last-child td {
+      border-bottom: none;
+    }
+
+    .clients-actions button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    button.toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+    }
+
+    button.toggle .switch {
+      width: 38px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--muted);
+      border: 1px solid var(--border);
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex: 0 0 auto;
+    }
+
+    button.toggle .switch .knob {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: var(--surface);
+    }
+
+    button.toggle[aria-pressed="true"] .switch {
+      background: LinkText;
+      justify-content: flex-end;
+    }
+
+    .pw-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .pw-wrap input {
+      width: 100%;
+      padding-right: 44px;
+    }
+
+    .pw-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      padding: 6px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .pw-toggle:hover {
+      background: var(--surface2);
+    }
+
+    .pw-toggle:focus-visible {
+      outline: 2px solid var(--border);
+      outline-offset: 2px;
+    }
+
+    .pw-toggle svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="msg" class="msg"></div>
+    <div class="layout">
+      <div class="stack">
+        <div class="actions">
+          <button id="toggleHotspot" class="toggle" type="button" aria-pressed="false">
+            <span class="switch" aria-hidden="true"><span class="knob"></span></span>
+            <span id="toggleText">热点：关闭</span>
+          </button>
+        </div>
+        <section class="card config-card">
+          <h2>配置</h2>
+          <div class="body">
+            <form id="cfg" class="grid">
+              <div class="section-title">网卡</div>
+              <label>共享网卡
+                <select name="uplinkIface" id="uplinkIface">
+                  <option value="">自动（系统默认路由）</option>
+                </select>
+              </label>
+              <label>热点网卡
+                <select name="iface" id="iface">
+                  <option value="">自动选择</option>
+                </select>
+              </label>
+
+              <div class="section-title">配置</div>
+              <label>SSID
+                <input name="ssid" autocomplete="off" />
+              </label>
+              <label>密码（>=8位）
+                <div class="pw-wrap">
+                  <input name="password" id="password" type="password" />
+                  <button id="pwToggle" class="pw-toggle" type="button" aria-label="显示密码" aria-pressed="false">
+                    <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 10.6a3 3 0 0 0 4.2 4.2" />
+                      <path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.5 0 10 8 10 8a18.3 18.3 0 0 1-4.1 5.3" />
+                      <path d="M6.1 6.1C3.3 8.2 2 12 2 12s3.5 7 10 7c1 0 1.9-.2 2.8-.5" />
+                    </svg>
+                  </button>
+                </div>
+              </label>
+              <label>热点IP/CIDR
+                <input name="ipCidr" autocomplete="off" placeholder="例如 192.168.12.1/24（留空用默认）" />
+              </label>
+
+              <label>放行端口（供客户端访问主机服务）
+                <input name="allowPorts" autocomplete="off" placeholder="如 53,67-68,153/udp,167-168/udp（默认tcp，逗号分隔）" />
+              </label>
+
+              <div class="section-title">无线参数</div>
+              <label>频段
+                <select name="band">
+                  <option value="bg">2.4G(bg)</option>
+                  <option value="a">5G(a)</option>
+                </select>
+              </label>
+              <label>信道
+                <input name="channel" type="number" min="1" max="165" />
+              </label>
+            </form>
+            <div class="actions" style="margin-top:12px">
+              <button id="save">保存</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>客户端</h2>
+          <div class="body">
+            <div id="clients"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+
+</html>
