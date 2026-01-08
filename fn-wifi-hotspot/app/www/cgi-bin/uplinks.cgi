@@ -2,12 +2,16 @@
 set -eu
 . "$(dirname "$0")/common.sh"
 
-http_json
+STEP="init"
+cgi_install_trap
 
 # Output schema:
 # { "ok": true, "uplinks": ["eth0", "wwan0", ...] }
 if ! command -v nmcli >/dev/null 2>&1; then
-  printf '{ "ok": true, "uplinks": [] }\n'
+  http_ok_begin
+  json_begin_named_array "uplinks"
+  json_end
+  http_ok_end
   exit 0
 fi
 
@@ -20,11 +24,13 @@ devs="$(nmcli -t -f DEVICE dev status 2>/dev/null \
   | awk '!/^(veth|docker|br-|virbr|vnet|tap|tun|wg|zt|tailscale|vboxnet|vmnet)/' \
   || true)"
 
-printf '{ "ok": true, "uplinks": ['
-first=1
-printf '%s' "$devs" | while IFS= read -r dev; do
-  [ -n "$dev" ] || continue
-  if [ $first -eq 1 ]; then first=0; else printf ','; fi
-  printf '"%s"' "$(json_escape "$dev")"
-done
-printf '] }\n'
+http_ok_begin
+json_begin_named_array "uplinks"
+while IFS= read -r dev; do
+  [ -n "${dev:-}" ] || continue
+  json_arr_add_string "$dev"
+done <<EOF
+$devs
+EOF
+json_end
+http_ok_end

@@ -25,11 +25,28 @@
       height: 100%
     }
 
+    html {
+      background: var(--bg);
+    }
+
     body {
       margin: 0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
       color: var(--text);
       background: var(--bg);
+    }
+
+    /* Dark theme: override color tokens so native controls (select/options)
+       render correctly in dropdowns and system UI. This avoids using a
+       global invert filter which breaks form control backgrounds. */
+    html[data-theme="dark"] {
+      --bg: #071127;
+      --text: #e6eef8;
+      --muted: #9aa6b2;
+      --border: #1f2933;
+      --surface: #0b1520;
+      --surface2: #0f1b2a;
+      color-scheme: dark;
     }
 
     .container {
@@ -124,6 +141,49 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px
+    }
+
+    .actions .spacer {
+      flex: 1 1 auto;
+    }
+
+    .actions select {
+      width: auto;
+      padding: 6px 30px 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background-color: var(--surface2);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+
+      /* Custom chevron + divider using existing theme tokens. */
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%),
+        linear-gradient(to right, var(--border), var(--border));
+      background-position:
+        calc(100% - 16px) 50%,
+        calc(100% - 11px) 50%,
+        calc(100% - 28px) 50%;
+      background-size:
+        6px 6px,
+        6px 6px,
+        1px 16px;
+      background-repeat: no-repeat;
+    }
+
+    .actions select:hover {
+      background-color: var(--surface);
+    }
+
+    .actions select:focus-visible {
+      outline: 2px solid var(--border);
+      outline-offset: 2px;
     }
 
     button {
@@ -323,44 +383,118 @@
       height: 18px;
       display: block;
     }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: none;
+    }
+
+    .modal.show {
+      display: block;
+    }
+
+    .modal .backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--text);
+      opacity: .35;
+    }
+
+    .modal .panel {
+      position: relative;
+      margin: 18vh auto 0;
+      max-width: min(560px, calc(100vw - 32px));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .modal .panel h3 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 700;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .modal .panel .content {
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .modal .panel .actions {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      justify-content: flex-end;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
     <div id="msg" class="msg"></div>
+    <div id="modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="backdrop" data-modal-close="1"></div>
+      <div class="panel" role="document">
+        <h3 id="modalTitle" data-i18n="title.confirm">确认</h3>
+        <div id="modalContent" class="content"></div>
+        <div class="actions">
+          <button id="modalCancel" type="button" data-i18n="btn.cancel">取消</button>
+          <button id="modalOk" type="button" data-i18n="btn.continue">继续</button>
+        </div>
+      </div>
+    </div>
     <div class="layout">
       <div class="stack">
         <div class="actions">
           <button id="toggleHotspot" class="toggle" type="button" aria-pressed="false">
             <span class="switch" aria-hidden="true"><span class="knob"></span></span>
-            <span id="toggleText">热点：关闭</span>
+            <span id="toggleText" data-i18n="toggle.off">热点：关闭</span>
           </button>
+
+          <span class="spacer" aria-hidden="true"></span>
+
+          <select id="langSelect" aria-label="Language" data-i18n-aria-label="aria.langSelect">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+          <select id="themeSelect" aria-label="Theme" data-i18n-aria-label="aria.themeSelect">
+            <option value="system">跟随系统</option>
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select>
         </div>
         <section class="card config-card">
-          <h2>配置</h2>
+          <h2 id="hConfig" data-i18n="section.config">配置</h2>
           <div class="body">
             <form id="cfg" class="grid">
-              <div class="section-title">网卡</div>
-              <label>共享网卡
+              <div class="section-title" data-i18n="section.net">网卡</div>
+              <label><span data-i18n="label.uplink">共享网卡</span>
                 <select name="uplinkIface" id="uplinkIface">
-                  <option value="">自动（系统默认路由）</option>
+                  <option value="" data-i18n="opt.uplinkAuto">自动（系统默认路由）</option>
                 </select>
               </label>
-              <label>热点网卡
+              <label><span data-i18n="label.iface">热点网卡</span>
                 <select name="iface" id="iface">
-                  <option value="">自动选择</option>
+                  <option value="" data-i18n="opt.ifaceAuto">自动选择</option>
                 </select>
               </label>
 
-              <div class="section-title">配置</div>
-              <label>SSID
+              <div class="section-title" data-i18n="section.config">配置</div>
+              <label><span data-i18n="label.ssid">SSID</span>
                 <input name="ssid" autocomplete="off" />
               </label>
-              <label>密码（>=8位）
+              <label><span data-i18n="label.password">密码（>=8位）</span>
                 <div class="pw-wrap">
                   <input name="password" id="password" type="password" />
-                  <button id="pwToggle" class="pw-toggle" type="button" aria-label="显示密码" aria-pressed="false">
+                  <button id="pwToggle" class="pw-toggle" type="button" aria-label="显示密码" aria-pressed="false"
+                    data-i18n-aria-label="pw.show">
                     <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -376,33 +510,35 @@
                   </button>
                 </div>
               </label>
-              <label>热点IP/CIDR
-                <input name="ipCidr" autocomplete="off" placeholder="例如 192.168.12.1/24（留空用默认）" />
+              <label><span data-i18n="label.ipCidr">热点IP/CIDR</span>
+                <input name="ipCidr" autocomplete="off" placeholder="如 192.168.12.1/24（留空用默认）"
+                  data-i18n-placeholder="placeholder.ipCidr" />
               </label>
 
-              <label>放行端口（供客户端访问主机服务）
-                <input name="allowPorts" autocomplete="off" placeholder="如 53,67-68,153/udp,167-168/udp（默认tcp，逗号分隔）" />
+              <label><span data-i18n="label.allowPorts">放行端口（供客户端访问主机服务）</span>
+                <input name="allowPorts" autocomplete="off" placeholder="如 53,67-68,153/udp,167-168/udp"
+                  data-i18n-placeholder="placeholder.allowPorts" />
               </label>
 
-              <div class="section-title">无线参数</div>
-              <label>频段
+              <div class="section-title" data-i18n="section.wifi">无线参数</div>
+              <label><span data-i18n="label.band">频段</span>
                 <select name="band">
                   <option value="bg">2.4G(bg)</option>
                   <option value="a">5G(a)</option>
                 </select>
               </label>
-              <label>信道
-                <input name="channel" type="number" min="1" max="165" />
+              <label><span data-i18n="label.channel">信道</span>
+                <select name="channel" id="channel"></select>
               </label>
             </form>
             <div class="actions" style="margin-top:12px">
-              <button id="save">保存</button>
+              <button id="save" data-i18n="btn.save">保存</button>
             </div>
           </div>
         </section>
 
         <section class="card">
-          <h2>客户端</h2>
+          <h2 id="hClients" data-i18n="section.clients">客户端</h2>
           <div class="body">
             <div id="clients"></div>
           </div>

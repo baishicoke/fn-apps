@@ -2,10 +2,42 @@
 set -eu
 . "$(dirname "$0")/common.sh"
 
+STEP="init"
+cgi_install_trap
+
 load_cfg
 ensure_iface
 
-dev_line="$(nmcli -t -f DEVICE,STATE,CONNECTION dev status 2>/dev/null | grep "^${IFACE}:" || true)"
+# Prefer runtime hotspot iface (may be a virtual AP iface).
+load_nat_state
+parent_iface="$IFACE"
+hotspot_iface="${HOTSPOT_IFACE:-$IFACE}"
+
+# STA (parent) device status (for concurrency UX).
+parent_state="unknown"
+parent_active=""
+if command -v nmcli >/dev/null 2>&1; then
+  parent_line="$(nmcli -t -f DEVICE,STATE,CONNECTION dev status 2>/dev/null | grep "^${parent_iface}:" || true)"
+  if [ -n "$parent_line" ]; then
+    parent_state="$(printf '%s' "$parent_line" | cut -d: -f2)"
+    parent_active="$(printf '%s' "$parent_line" | cut -d: -f3-)"
+  fi
+fi
+
+sta_ap_concurrent="false"
+if iw_supports_sta_ap; then
+  sta_ap_concurrent="true"
+fi
+
+will_disconnect_sta="false"
+if [ "$sta_ap_concurrent" = "false" ]; then
+  case "${parent_active:-}" in
+    "" | "--") : ;;
+    *) will_disconnect_sta="true" ;;
+  esac
+fi
+
+dev_line="$(nmcli -t -f DEVICE,STATE,CONNECTION dev status 2>/dev/null | grep "^${hotspot_iface}:" || true)"
 state="unknown"
 active=""
 if [ -n "$dev_line" ]; then
@@ -16,7 +48,7 @@ fi
 running="false"
 [ "$active" = "$CONNECTION_NAME" ] && running="true"
 
-ip="$(ip -4 addr show dev "$IFACE" 2>/dev/null | awk '/inet[[:space:]]/{print $2; exit}' || true)"
+ip="$(ip -4 addr show dev "$hotspot_iface" 2>/dev/null | awk '/inet[[:space:]]/{print $2; exit}' || true)"
 
 uplink_iface="${UPLINK_IFACE:-}"
 if [ -z "$uplink_iface" ] && command -v ip >/dev/null 2>&1; then
@@ -39,20 +71,20 @@ gateway=""
 gateway_ok="null"
 http_ok="null"
 http_url="http://connectivitycheck.gstatic.com/generate_204"
-if [ "$running" = "true" ]; then
-  if command -v ip >/dev/null 2>&1; then
-    route_line="$(ip -4 route get "$internet_target" 2>/dev/null | head -n1 || true)"
-    if [ -n "$route_line" ]; then
-      route_dev="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++){if($i=="dev"){print $(i+1); exit}}}' || true)"
-      route_src="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}' || true)"
-    fi
-
-    def_line="$(ip -4 route show default 2>/dev/null | head -n1 || true)"
-    if [ -n "$def_line" ]; then
-      gateway="$(printf '%s' "$def_line" | awk '{for(i=1;i<=NF;i++){if($i=="via"){print $(i+1); exit}}}' || true)"
-    fi
+if command -v ip >/dev/null 2>&1; then
+  route_line="$(ip -4 route get "$internet_target" 2>/dev/null | head -n1 || true)"
+  if [ -n "$route_line" ]; then
+    route_dev="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++){if($i=="dev"){print $(i+1); exit}}}' || true)"
+    route_src="$(printf '%s' "$route_line" | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}' || true)"
   fi
 
+  def_line="$(ip -4 route show default 2>/dev/null | head -n1 || true)"
+  if [ -n "$def_line" ]; then
+    gateway="$(printf '%s' "$def_line" | awk '{for(i=1;i<=NF;i++){if($i=="via"){print $(i+1); exit}}}' || true)"
+  fi
+fi
+
+if [ "$running" = "true" ]; then
   if command -v ping >/dev/null 2>&1; then
     probe_dev="${route_dev:-}"
     if [ -z "$probe_dev" ]; then
@@ -125,23 +157,29 @@ else
   internet_reason="hotspot not running"
 fi
 
-http_json
-printf '{ "ok": true, "status": {'
-printf '"running":%s,' "$running"
-printf '"iface":"%s",' "$(json_escape "$IFACE")"
-printf '"state":"%s",' "$(json_escape "$state")"
-printf '"activeConnection":"%s",' "$(json_escape "$active")"
-printf '"ip":"%s",' "$(json_escape "${ip:-}")"
-printf '"uplinkIface":"%s",' "$(json_escape "${uplink_iface:-}")"
-printf '"routeDev":"%s",' "$(json_escape "${route_dev:-}")"
-printf '"routeSrc":"%s",' "$(json_escape "${route_src:-}")"
-printf '"gateway":"%s",' "$(json_escape "${gateway:-}")"
-printf '"gatewayOk":%s,' "$gateway_ok"
-printf '"ipForward":%s,' "$ip_forward_bool"
-printf '"internetOk":%s,' "$internet_ok"
-printf '"internetTarget":"%s"' "$(json_escape "$internet_target")"
+http_ok_begin
+json_begin_named_object "status"
+json_kv_bool "running" "$running"
+json_kv_string "iface" "$parent_iface"
+json_kv_string "hotspotIface" "$hotspot_iface"
+json_kv_string "parentState" "$parent_state"
+json_kv_string "parentActiveConnection" "$parent_active"
+json_kv_bool "staApConcurrent" "$sta_ap_concurrent"
+json_kv_bool "willDisconnectSta" "$will_disconnect_sta"
+json_kv_string "state" "$state"
+json_kv_string "activeConnection" "$active"
+json_kv_string "ip" "${ip:-}"
+json_kv_string "uplinkIface" "${uplink_iface:-}"
+json_kv_string "routeDev" "${route_dev:-}"
+json_kv_string "routeSrc" "${route_src:-}"
+json_kv_string "gateway" "${gateway:-}"
+json_kv_raw "gatewayOk" "$gateway_ok"
+json_kv_bool "ipForward" "$ip_forward_bool"
+json_kv_raw "internetOk" "$internet_ok"
+json_kv_string "internetTarget" "$internet_target"
 if [ -n "${internet_reason:-}" ]; then
-  printf ', "internetReason":"%s"' "$(json_escape "$internet_reason")"
+  json_kv_string "internetReason" "$internet_reason"
 fi
-printf ', "httpOk":%s' "$http_ok"
-printf '} }\n'
+json_kv_raw "httpOk" "$http_ok"
+json_end
+http_ok_end

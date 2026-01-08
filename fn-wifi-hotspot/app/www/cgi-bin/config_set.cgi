@@ -2,6 +2,9 @@
 set -eu
 . "$(dirname "$0")/common.sh"
 
+STEP="init"
+cgi_install_trap
+
 body="$(read_body)"
 
 load_cfg
@@ -24,8 +27,7 @@ fi
 # Option B: persist a concrete iface even if client submits empty.
 ensure_iface
 
-validate_cfg || http_err "400 Bad Request" "invalid config (password>=8, band=bg|a, channel=number)"
+validate_cfg || http_err "400 Bad Request" "${CFG_ERR:-invalid config}"
 
 save_cfg || http_err "500 Internal Server Error" "save config failed (CFG_FILE not writable)"
-http_json
-printf '{ "ok": true }\n'
+http_ok

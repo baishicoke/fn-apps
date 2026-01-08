@@ -2,14 +2,33 @@
 set -eu
 . "$(dirname "$0")/common.sh"
 
+STEP="init"
+cgi_install_trap
+
 load_cfg
 ensure_iface
+
+# Prefer runtime hotspot iface (may be a virtual AP iface).
+load_nat_state
+HOTSPOT_DEV="${HOTSPOT_IFACE:-$IFACE}"
+
+# If the hotspot device is not operating as AP (e.g. it's in STA/managed mode),
+# do not show clients — STA-mode interfaces do not have associated stations.
+if command -v iw >/dev/null 2>&1; then
+  if ! iw dev "$HOTSPOT_DEV" info 2>/dev/null | grep -q "type AP"; then
+    http_ok_begin
+    json_begin_named_array "clients"
+    json_end
+    http_ok_end
+    exit 0
+  fi
+fi
 
 TAB="$(printf '\t')"
 
 stations=""
 if command -v iw >/dev/null 2>&1; then
-  stations="$(iw dev "$IFACE" station dump 2>/dev/null | awk '
+  stations="$(iw dev "$HOTSPOT_DEV" station dump 2>/dev/null | awk '
     BEGIN{mac=""; sig=""; ct=""; rx=""; tx=""}
     /^Station /{
       if (mac!="") {print mac"\t"sig"\t"ct"\t"rx"\t"tx}
@@ -27,7 +46,7 @@ fi
 # Neighbor table: MAC -> IP (best-effort)
 neigh=""
 if command -v ip >/dev/null 2>&1; then
-  neigh="$(ip neigh show dev "$IFACE" 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="lladdr"){print $(i+1)"\t"$1}}}' || true)"
+  neigh="$(ip neigh show dev "$HOTSPOT_DEV" 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="lladdr"){print $(i+1)"\t"$1}}}' || true)"
 fi
 
 # Best-effort hostname mapping from DHCP leases (MAC/IP -> hostname)
@@ -37,8 +56,7 @@ if command -v awk >/dev/null 2>&1; then
   leases_raw=""
   for f in /var/lib/NetworkManager/dnsmasq-*.leases /var/lib/misc/dnsmasq.leases /tmp/dnsmasq.leases; do
     [ -r "$f" ] || continue
-    leases_raw="$leases_raw$(cat "$f" 2>/dev/null || true)
-"
+    leases_raw="$leases_raw$(cat "$f" 2>/dev/null || true)"
   done
 
   if [ -n "${leases_raw:-}" ]; then
@@ -68,9 +86,8 @@ if command -v awk >/dev/null 2>&1; then
   fi
 fi
 
-http_json
-printf '{ "ok": true, "clients": ['
-first=1
+http_ok_begin
+json_begin_named_array "clients"
 seen=" "
 
 emit_client() {
@@ -87,9 +104,8 @@ emit_client() {
   esac
   seen="$seen$mac "
 
-  if [ $first -eq 1 ]; then first=0; else printf ','; fi
-
-  printf '{ "mac":"%s"' "$(json_escape "$mac")"
+  json_begin_object
+  json_kv_string "mac" "$mac"
   hostname=""
   if [ -n "${lease_hosts_mac:-}" ]; then
     hostname="$(printf '%s\n' "$lease_hosts_mac" | awk -v m="$mac" 'tolower($1)==tolower(m){print $2; exit}' || true)"
@@ -101,24 +117,24 @@ emit_client() {
     hostname="$(getent hosts "$ipaddr" 2>/dev/null | awk '{print $2; exit}' || true)"
   fi
   if [ -n "${hostname:-}" ]; then
-    printf ', "hostname":"%s"' "$(json_escape "$hostname")"
+    json_kv_string "hostname" "$hostname"
   fi
   if [ -n "${ipaddr:-}" ]; then
-    printf ', "ip":"%s"' "$(json_escape "$ipaddr")"
+    json_kv_string "ip" "$ipaddr"
   fi
   if [ -n "${sig:-}" ]; then
-    printf ', "signalDbm":%s' "$(json_escape "$sig")"
+    json_kv_raw "signalDbm" "$(json_escape "$sig")"
   fi
   if [ -n "${ct:-}" ]; then
-    printf ', "connectedSeconds":%s' "$(json_escape "$ct")"
+    json_kv_raw "connectedSeconds" "$(json_escape "$ct")"
   fi
   if [ -n "${rx_bytes:-}" ]; then
-    printf ', "rxBytes":%s' "$(json_escape "$rx_bytes")"
+    json_kv_raw "rxBytes" "$(json_escape "$rx_bytes")"
   fi
   if [ -n "${tx_bytes:-}" ]; then
-    printf ', "txBytes":%s' "$(json_escape "$tx_bytes")"
+    json_kv_raw "txBytes" "$(json_escape "$tx_bytes")"
   fi
-  printf ' }'
+  json_end
 }
 
 # Prefer station dump first (includes signal/time). Add IP if present in neigh.
@@ -143,4 +159,5 @@ if [ -z "${stations:-}" ] && [ -n "${neigh:-}" ]; then
 $neigh
 EOF
 fi
-printf '] }\n'
+json_end
+http_ok_end
