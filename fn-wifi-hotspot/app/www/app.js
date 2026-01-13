@@ -9,16 +9,18 @@ const form = $("cfg");
 const ifaceEl = form.elements["iface"];
 const uplinkEl = form.elements["uplinkIface"];
 const passwordEl = form.elements["password"];
+const countryCodeEl = form.elements["countryCode"];
 const bandEl = form.elements["band"];
 const channelEl = form.elements["channel"];
+const channelWidthEl = form.elements["channelWidth"];
 const pwToggleBtn = $("pwToggle");
 const langSelectEl = $("langSelect");
 const themeSelectEl = $("themeSelect");
 
-let serverChannelOptions = { bg: null, a: null };
+let serverChannelMeta = { bg: {}, a: {} };
 
 let lastRunning = false;
-let lastInternetOk = undefined;
+let lastInternetStatus = undefined;
 
 const I18N = {
   zh: {
@@ -39,22 +41,24 @@ const I18N = {
 
     "section.net": "网卡",
     "section.config": "配置",
-    "section.wifi": "无线参数",
+    "section.wifi": "参数",
     "section.clients": "客户端",
     "label.uplink": "共享网卡",
     "label.iface": "热点网卡",
     "label.ssid": "SSID",
     "label.password": "密码（>=8位）",
-    "label.ipCidr": "热点IP/CIDR",
+    "label.ipCidr": "IP/CIDR",
     "label.allowPorts": "放行端口（供客户端访问主机服务）",
+    "label.country": "国家码",
     "label.band": "频段",
     "label.channel": "信道",
+    "label.width": "带宽",
     "opt.uplinkAuto": "自动（系统默认路由）",
     "opt.ifaceAuto": "自动选择",
     "opt.unavailable": "（不可用/未检测到）",
 
-    "placeholder.ipCidr": "例如 192.168.12.1/24（留空用默认）",
-    "placeholder.allowPorts": "如 53,67-68,153/udp,167-168/udp（默认tcp，逗号分隔）",
+    "placeholder.ipCidr": "192.168.12.1/24",
+    "placeholder.allowPorts": "80,443,5666,5667,67-68/udp",
 
     "pw.show": "显示密码",
     "pw.hide": "隐藏密码",
@@ -91,6 +95,56 @@ const I18N = {
     "msg.saved": "已保存",
     "msg.savedRestart": "已保存并重启热点",
     "msg.no5g": "当前监管域下 5G 信道不可用，已切换到 2.4G",
+    "msg.countryChangeFailed": "更改国家码失败：{err}",
+    "countryNames": {
+      "CN": "中国",
+      "US": "美国",
+      "JP": "日本",
+      "KR": "韩国",
+      "AU": "澳大利亚",
+      "CA": "加拿大",
+      "GB": "英国",
+      "DE": "德国",
+      "FR": "法国",
+      "IT": "意大利",
+      "ES": "西班牙",
+      "NL": "荷兰",
+      "BE": "比利时",
+      "CH": "瑞士",
+      "AT": "奥地利",
+      "SE": "瑞典",
+      "NO": "挪威",
+      "DK": "丹麦",
+      "FI": "芬兰",
+      "RU": "俄罗斯",
+      "IN": "印度",
+      "BR": "巴西",
+      "MX": "墨西哥",
+      "AR": "阿根廷",
+      "CL": "智利",
+      "CO": "哥伦比亚",
+      "PE": "秘鲁",
+      "VE": "委内瑞拉",
+      "ZA": "南非",
+      "EG": "埃及",
+      "NG": "尼日利亚",
+      "KE": "肯尼亚",
+      "MA": "摩洛哥",
+      "TN": "突尼斯",
+      "TR": "土耳其",
+      "SA": "沙特阿拉伯",
+      "AE": "阿联酋",
+      "IL": "以色列",
+      "TH": "泰国",
+      "MY": "马来西亚",
+      "SG": "新加坡",
+      "PH": "菲律宾",
+      "ID": "印尼",
+      "VN": "越南",
+      "HK": "中国香港",
+      "TW": "中国台湾",
+      "MO": "中国澳门"
+    },
   },
   en: {
     "title.tip": "Info",
@@ -110,22 +164,24 @@ const I18N = {
 
     "section.net": "Network",
     "section.config": "Config",
-    "section.wifi": "Wi‑Fi",
+    "section.wifi": "Wi-Fi",
     "section.clients": "Clients",
     "label.uplink": "Uplink",
     "label.iface": "Hotspot device",
     "label.ssid": "SSID",
     "label.password": "Password (>=8)",
-    "label.ipCidr": "Hotspot IP/CIDR",
+    "label.ipCidr": "IP/CIDR",
     "label.allowPorts": "Allowed ports (client → host)",
+    "label.country": "Country Code",
     "label.band": "Band",
     "label.channel": "Channel",
+    "label.width": "Bandwidth",
     "opt.uplinkAuto": "Auto (default route)",
     "opt.ifaceAuto": "Auto",
     "opt.unavailable": " (unavailable)",
 
-    "placeholder.ipCidr": "e.g. 192.168.12.1/24 (empty for default)",
-    "placeholder.allowPorts": "e.g. 53,67-68,153/udp,167-168/udp (tcp default, comma-separated)",
+    "placeholder.ipCidr": "192.168.12.1/24",
+    "placeholder.allowPorts": "80,443,5666,5667,67-68/udp",
 
     "pw.show": "Show password",
     "pw.hide": "Hide password",
@@ -162,6 +218,56 @@ const I18N = {
     "msg.saved": "Saved",
     "msg.savedRestart": "Saved and restarted",
     "msg.no5g": "5GHz channels unavailable; switched to 2.4GHz",
+    "msg.countryChangeFailed": "Failed to change country code: {err}",
+    "countryNames": {
+      "CN": "China",
+      "US": "United States",
+      "JP": "Japan",
+      "KR": "Korea",
+      "AU": "Australia",
+      "CA": "Canada",
+      "GB": "United Kingdom",
+      "DE": "Germany",
+      "FR": "France",
+      "IT": "Italy",
+      "ES": "Spain",
+      "NL": "Netherlands",
+      "BE": "Belgium",
+      "CH": "Switzerland",
+      "AT": "Austria",
+      "SE": "Sweden",
+      "NO": "Norway",
+      "DK": "Denmark",
+      "FI": "Finland",
+      "RU": "Russia",
+      "IN": "India",
+      "BR": "Brazil",
+      "MX": "Mexico",
+      "AR": "Argentina",
+      "CL": "Chile",
+      "CO": "Colombia",
+      "PE": "Peru",
+      "VE": "Venezuela",
+      "ZA": "South Africa",
+      "EG": "Egypt",
+      "NG": "Nigeria",
+      "KE": "Kenya",
+      "MA": "Morocco",
+      "TN": "Tunisia",
+      "TR": "Turkey",
+      "SA": "Saudi Arabia",
+      "AE": "United Arab Emirates",
+      "IL": "Israel",
+      "TH": "Thailand",
+      "MY": "Malaysia",
+      "SG": "Singapore",
+      "PH": "Philippines",
+      "ID": "Indonesia",
+      "VN": "Vietnam",
+      "HK": "Hong Kong, China",
+      "TW": "Taiwan, China",
+      "MO": "Macau, China"
+    },
   }
 };
 
@@ -233,8 +339,24 @@ function applyI18nStatic() {
     if (optDark) optDark.textContent = t("theme.dark");
   }
 
+  // Localize country select options if present
+  try {
+    const countrySel = document.getElementById('countryCode');
+    if (countrySel) {
+      const dict = I18N[currentLang] || I18N.zh;
+      const names = dict && dict.countryNames ? dict.countryNames : {};
+      for (const opt of Array.from(countrySel.options)) {
+        const code = (opt.value || '').toString();
+        const name = names[code] || code;
+        opt.textContent = `${code} (${name})`;
+      }
+    }
+  } catch (e) {
+    // noop
+  }
+
   // Keep toggle label consistent.
-  setRunningUI(lastRunning, lastInternetOk);
+  setRunningUI(lastRunning, lastInternetStatus);
 
   // Sync password toggle label for current language.
   setPasswordVisible(passwordVisible);
@@ -390,15 +512,15 @@ function internalProgress(message, { title = null } = {}) {
   return () => closeModal();
 }
 
-function setRunningUI(running, internetOk) {
+function setRunningUI(running, internetStatus) {
   lastRunning = !!running;
-  lastInternetOk = internetOk;
+  lastInternetStatus = internetStatus;
   if (!toggleBtn) return;
   toggleBtn.setAttribute("aria-pressed", lastRunning ? "true" : "false");
   let suffix = "";
   if (lastRunning) {
-    if (internetOk === true) suffix = t("toggle.suffix.net");
-    else if (internetOk === false) suffix = t("toggle.suffix.nonnet");
+    if (internetStatus === true) suffix = t("toggle.suffix.net");
+    else if (internetStatus === false) suffix = t("toggle.suffix.nonnet");
   }
   const label = `${lastRunning ? t("toggle.on") : t("toggle.off")}${suffix}`;
   if (toggleText) toggleText.textContent = label;
@@ -415,35 +537,62 @@ function defaultChannelForBand(band) {
 }
 
 function channelOptionsForBand(band) {
-  const fromServer = serverChannelOptions && (band === "a" ? serverChannelOptions.a : serverChannelOptions.bg);
-  if (Array.isArray(fromServer) && fromServer.length > 0) {
-    return fromServer.map(String);
+  const meta = serverChannelMeta && serverChannelMeta[band];
+  if (meta && Object.keys(meta).length > 0) {
+    // Prefer numeric sort for channel numbers
+    return Object.keys(meta).sort((a, b) => Number(a) - Number(b));
   }
-  if (band === "a") {
-    // Common 5GHz channels (includes DFS ranges in case environment allows them).
-    return [
-      "36", "40", "44", "48",
-      "52", "56", "60", "64",
-      "100", "104", "108", "112", "116", "120", "124", "128", "132", "136", "140", "144",
-      "149", "153", "157", "161", "165"
-    ];
-  }
-  // 2.4GHz channels (keep simple)
-  const out = [];
-  for (let i = 1; i <= 13; i++) out.push(String(i));
-  return out;
+  return [];
 }
 
 function updateBandAvailability() {
   if (!bandEl) return;
   const opt5g = bandEl.querySelector('option[value="a"]');
-  const has5g = Array.isArray(serverChannelOptions.a) ? serverChannelOptions.a.length > 0 : true;
+  // Consider 5G available only if there's at least one non-disabled channel
+  let has5g = true;
+  const metaA = serverChannelMeta && serverChannelMeta.a ? serverChannelMeta.a : {};
+  if (Object.keys(metaA).length > 0) {
+    has5g = Object.keys(metaA).some(ch => {
+      const st = (metaA && metaA[ch] && metaA[ch].state) ? metaA[ch].state : null;
+      return st !== 'disabled';
+    });
+  }
   if (opt5g) opt5g.disabled = !has5g;
   if (!has5g && bandEl.value === "a") {
     bandEl.value = "bg";
     syncChannelSelect({ band: "bg", forceDefaultIfInvalid: true });
     setMsg(t("msg.no5g"));
     markDirty();
+  }
+}
+
+// Fetch channel options from server for a specific country and apply them.
+async function fetchAndApplyChannelOptions(countryCode, { forceDefaultIfInvalid = false } = {}) {
+  if (!countryCode) countryCode = "CN";
+  try {
+    // Request server config with country override so backend can return proper channelOptions
+    const url = cgiUrl("config_get.cgi") + `&countryCode=${encodeURIComponent(countryCode)}`;
+    const cfg = await getJSON(url);
+    if (cfg && cfg.channelOptions && typeof cfg.channelOptions === "object") {
+      serverChannelMeta = { bg: {}, a: {} };
+      for (const band of ["bg", "a"]) {
+        const arr = Array.isArray(cfg.channelOptions[band]) ? cfg.channelOptions[band] : null;
+        if (!Array.isArray(arr)) continue;
+        for (const entry of arr) {
+          const parts = String(entry).split(":");
+          const ch = parts[0] || "";
+          const freq = parts[1] || null;
+          const state = parts[2] || (parts.length > 1 ? 'supported' : null);
+          if (ch) serverChannelMeta[band][String(ch)] = { freq, state };
+        }
+      }
+      updateBandAvailability();
+      syncChannelSelect({ forceDefaultIfInvalid });
+      markDirty();
+    }
+  } catch (e) {
+    const msg = t("msg.countryChangeFailed", { err: e.message || String(e) });
+    try { internalAlert(msg).catch(() => { /* ignore */ }); } catch (_) { setMsg(msg); }
   }
 }
 
@@ -457,7 +606,11 @@ function syncChannelSelect({ band, prefer, forceDefaultIfInvalid = false } = {})
   for (const v of opts) {
     const opt = document.createElement("option");
     opt.value = v;
-    opt.textContent = v;
+    // If server provided metadata, show frequency and disable if marked.
+    const meta = (serverChannelMeta[b] && serverChannelMeta[b][v]) ? serverChannelMeta[b][v] : null;
+    opt.textContent = meta && meta.freq ? `${v} (${meta.freq} MHz)` : v;
+    if (meta && meta.state === 'disabled') opt.disabled = true;
+    if (meta && meta.state && meta.state !== 'supported') opt.title = meta.state;
     channelEl.appendChild(opt);
   }
 
@@ -499,6 +652,17 @@ if (bandEl && channelEl) {
     const current = (channelEl.value || "").toString().trim();
     syncChannelSelect({ band, prefer: current, forceDefaultIfInvalid: true });
     markDirty();
+  });
+}
+
+// When country code changes, fetch updated regulatory channel options and refresh selects.
+if (countryCodeEl) {
+  countryCodeEl.addEventListener("change", () => {
+    const cc = (countryCodeEl.value || "CN").toString();
+    // Fetch channel options for the chosen country and update UI accordingly.
+    fetchAndApplyChannelOptions(cc, { forceDefaultIfInvalid: true }).catch((e) => {
+      setMsg(e.message);
+    });
   });
 }
 
@@ -655,12 +819,25 @@ const cgiUrl = (p) => {
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
   const text = await r.text();
-  const j = (() => {
-    try { return text ? JSON.parse(text) : {}; }
-    catch { return null; }
-  })();
-  if (!r.ok) throw new Error((j && j.error) || r.statusText);
-  if (!j) throw new Error(t("err.invalidJson"));
+  let j = null;
+  try {
+    j = text ? JSON.parse(text) : {};
+  } catch (e) {
+    j = null;
+  }
+
+  // If server responded non-2xx, prefer JSON.error -> raw text -> statusText
+  if (!r.ok) {
+    const msg = (j && j.error) || text || r.statusText;
+    throw new Error(msg);
+  }
+
+  // 2xx but not JSON: present raw text as error so UI shows useful info
+  if (!j) {
+    const msg = text || t("err.invalidJson");
+    throw new Error(msg);
+  }
+
   if (j.ok === false) throw new Error(j.error || r.statusText);
   return j;
 }
@@ -686,8 +863,10 @@ function readForm() {
     allowPorts: (fd.get("allowPorts") || "").toString().trim(),
     ssid: (fd.get("ssid") || "").toString().trim(),
     password: (fd.get("password") || "").toString(),
+    countryCode: (fd.get("countryCode") || "CN").toString(),
     band: (fd.get("band") || "bg").toString(),
-    channel: (fd.get("channel") || "6").toString()
+    channel: (fd.get("channel") || "6").toString(),
+    channelWidth: (fd.get("channelWidth") || "20").toString()
   };
 }
 
@@ -777,10 +956,20 @@ async function refresh({ force = false, withConfig = true } = {}) {
 
     const cfgObj = cfg && cfg.config;
     if (cfg && cfg.channelOptions && typeof cfg.channelOptions === "object") {
-      serverChannelOptions = {
-        bg: Array.isArray(cfg.channelOptions.bg) ? cfg.channelOptions.bg : null,
-        a: Array.isArray(cfg.channelOptions.a) ? cfg.channelOptions.a : null,
-      };
+      // Build meta mapping for quick lookup from server-provided entries which may be
+      // either "CH:FRQ:STATE" or plain "CH".
+      serverChannelMeta = { bg: {}, a: {} };
+      for (const band of ["bg", "a"]) {
+        const arr = Array.isArray(cfg.channelOptions[band]) ? cfg.channelOptions[band] : null;
+        if (!Array.isArray(arr)) continue;
+        for (const entry of arr) {
+          const parts = String(entry).split(":");
+          const ch = parts[0] || "";
+          const freq = parts[1] || null;
+          const state = parts[2] || (parts.length > 1 ? 'supported' : null);
+          if (ch) serverChannelMeta[band][String(ch)] = { freq, state };
+        }
+      }
       updateBandAvailability();
     }
     const current = (!force && formDirty) ? baseline : null;
@@ -796,7 +985,7 @@ async function refresh({ force = false, withConfig = true } = {}) {
 
     setRunningUI(
       st && st.status && st.status.running === true,
-      st && st.status ? st.status.internetOk : undefined
+      st && st.status ? st.status.internetStatus : undefined
     );
     if (statusEl) statusEl.textContent = JSON.stringify(st.status, null, 2);
     renderClients(cl.clients);
@@ -815,7 +1004,7 @@ async function refresh({ force = false, withConfig = true } = {}) {
   setUplinkOptions(ups && ups.uplinks, baseline.uplinkIface);
   setRunningUI(
     st && st.status && st.status.running === true,
-    st && st.status ? st.status.internetOk : undefined
+    st && st.status ? st.status.internetStatus : undefined
   );
   if (statusEl) statusEl.textContent = JSON.stringify(st.status, null, 2);
   renderClients(cl.clients);
@@ -826,18 +1015,17 @@ $("save").onclick = async (ev) => {
   const saveBtn = $("save");
   try {
     if (saveBtn) saveBtn.disabled = true;
-    const closeProg = internalProgress(t("progress.save"));
-    await postForm(cgiUrl("config_set.cgi"), readForm());
-
     if (lastRunning) {
-      closeProg();
       const closeRestart = internalProgress(t("progress.restart"));
       await getJSON(cgiUrl("stop.cgi"));
+      await postForm(cgiUrl("config_set.cgi"), readForm());
       await getJSON(cgiUrl("start.cgi"));
       closeRestart();
       setMsg(t("msg.savedRestart"));
       await refresh({ withConfig: false });
     } else {
+      const closeProg = internalProgress(t("progress.save"));
+      await postForm(cgiUrl("config_set.cgi"), readForm());
       closeProg();
       setMsg(t("msg.saved"));
       await refresh({ force: true });
@@ -935,7 +1123,7 @@ async function refreshClientsOnly() {
     ]);
     setRunningUI(
       st && st.status && st.status.running === true,
-      st && st.status ? st.status.internetOk : undefined
+      st && st.status ? st.status.internetStatus : undefined
     );
     renderClients(cl && cl.clients);
   } finally {

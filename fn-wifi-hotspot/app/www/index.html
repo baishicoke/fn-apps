@@ -510,17 +510,70 @@
                   </button>
                 </div>
               </label>
-              <label><span data-i18n="label.ipCidr">热点IP/CIDR</span>
-                <input name="ipCidr" autocomplete="off" placeholder="如 192.168.12.1/24（留空用默认）"
+              <label><span data-i18n="label.ipCidr">IP/CIDR</span>
+                <input name="ipCidr" autocomplete="off" placeholder="192.168.12.1/24"
                   data-i18n-placeholder="placeholder.ipCidr" />
               </label>
 
               <label><span data-i18n="label.allowPorts">放行端口（供客户端访问主机服务）</span>
-                <input name="allowPorts" autocomplete="off" placeholder="如 53,67-68,153/udp,167-168/udp"
+                <input name="allowPorts" autocomplete="off" placeholder="80,443,5666,5667,67-68/udp"
                   data-i18n-placeholder="placeholder.allowPorts" />
               </label>
 
-              <div class="section-title" data-i18n="section.wifi">无线参数</div>
+              <div class="section-title" data-i18n="section.wifi">参数</div>
+
+              <label><span data-i18n="label.country">国家码</span>
+                <select name="countryCode" id="countryCode">
+                  <option value="CN">CN</option>
+                  <option value="US">US</option>
+                  <option value="JP">JP</option>
+                  <option value="KR">KR</option>
+                  <option value="AU">AU</option>
+                  <option value="CA">CA</option>
+                  <option value="GB">GB</option>
+                  <option value="DE">DE</option>
+                  <option value="FR">FR</option>
+                  <option value="IT">IT</option>
+                  <option value="ES">ES</option>
+                  <option value="NL">NL</option>
+                  <option value="BE">BE</option>
+                  <option value="CH">CH</option>
+                  <option value="AT">AT</option>
+                  <option value="SE">SE</option>
+                  <option value="NO">NO</option>
+                  <option value="DK">DK</option>
+                  <option value="FI">FI</option>
+                  <option value="RU">RU</option>
+                  <option value="IN">IN</option>
+                  <option value="BR">BR</option>
+                  <option value="MX">MX</option>
+                  <option value="AR">AR</option>
+                  <option value="CL">CL</option>
+                  <option value="CO">CO</option>
+                  <option value="PE">PE</option>
+                  <option value="VE">VE</option>
+                  <option value="ZA">ZA</option>
+                  <option value="EG">EG</option>
+                  <option value="NG">NG</option>
+                  <option value="KE">KE</option>
+                  <option value="MA">MA</option>
+                  <option value="TN">TN</option>
+                  <option value="TR">TR</option>
+                  <option value="SA">SA</option>
+                  <option value="AE">AE</option>
+                  <option value="IL">IL</option>
+                  <option value="TH">TH</option>
+                  <option value="MY">MY</option>
+                  <option value="SG">SG</option>
+                  <option value="PH">PH</option>
+                  <option value="ID">ID</option>
+                  <option value="VN">VN</option>
+                  <option value="HK">HK</option>
+                  <option value="TW">TW</option>
+                  <option value="MO">MO</option>
+                </select>
+              </label>
+
               <label><span data-i18n="label.band">频段</span>
                 <select name="band">
                   <option value="bg">2.4G(bg)</option>
@@ -529,6 +582,14 @@
               </label>
               <label><span data-i18n="label.channel">信道</span>
                 <select name="channel" id="channel"></select>
+              </label>
+              <label><span data-i18n="label.width">带宽</span>
+                <select name="channelWidth" id="channelWidth">
+                  <option value="20">20 MHz</option>
+                  <option value="40">40 MHz</option>
+                  <option value="80">80 MHz</option>
+                  <option value="160">160 MHz</option>
+                </select>
               </label>
             </form>
             <div class="actions" style="margin-top:12px">

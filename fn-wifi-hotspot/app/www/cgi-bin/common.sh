@@ -13,16 +13,16 @@ PORTS_STATE_FILE="${PORTS_STATE_FILE:-$DATA_DIR/ports.state}"
 HOTSPOT_STATE_FILE="${HOTSPOT_STATE_FILE:-$DATA_DIR/hotspot.state}"
 
 # 默认配置
-DEFAULT_CONNECTION_NAME="fn-hotspot"
 DEFAULT_IFACE=""
 DEFAULT_UPLINK_IFACE=""
-DEFAULT_IP_CIDR=""
-DEFAULT_ALLOW_PORTS=""
+DEFAULT_IP_CIDR="192.168.12.1/24"
+DEFAULT_ALLOW_PORTS="80,443,5666,5667,67-68/udp"
 DEFAULT_SSID="fn-hotspot"
 DEFAULT_PASSWORD="12345678"
+DEFAULT_COUNTRY="" # e.g. CN/US
 DEFAULT_BAND="bg" # bg=2.4G, a=5G
 DEFAULT_CHANNEL="6"
-DEFAULT_COUNTRY="" # e.g. CN/US; empty = keep current regdom
+DEFAULT_CHANNEL_WIDTH="20" # MHz: 20,40,80,160
 
 mkdir -p "$DATA_DIR" 2>/dev/null || true
 
@@ -434,10 +434,22 @@ ensure_virtual_ap_iface() {
   return 0
 }
 
-delete_iface() {
+delete_virtual_ap_iface() {
   iface="$1"
   [ -n "${iface:-}" ] || return 0
   command -v iw >/dev/null 2>&1 || return 0
+
+  if iw dev "$ap_iface" info >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Best-effort: let NetworkManager manage the new device.
+  if command -v nmcli >/dev/null 2>&1; then
+    nmcli dev set "$ap_iface" managed no >/dev/null 2>&1 || true
+  fi
+  if command -v ip >/dev/null 2>&1; then
+	ip link set "$iface" down >/dev/null 2>&1 || true
+  fi
   iw dev "$iface" del >/dev/null 2>&1 || true
 }
 
@@ -631,11 +643,11 @@ cgi_install_trap() {
 http_err() {
   code="$1"
   msg="$2"
-  printf 'Status: %s\r\n' "$code"
+  printf 'Status: 200 OK\r\n'
   http_json
   msg_loc="$(localize_msg "${msg:-}")"
   msg_clean="$(sanitize_text "${msg_loc:-}")"
-  printf '{ "ok": false, "error": "%s" }\n' "$(json_escape "$msg_clean")"
+  printf '{ "ok": false, "error": "%s", "http_status": "%s" }\n' "$(json_escape "$msg_clean")" "$(json_escape "$code")"
   exit 0
 }
 
@@ -861,6 +873,12 @@ is_ipv4_cidr() {
   '
 }
 
+iw_reg_country() {
+  # Best-effort: return country code from `iw reg get` (e.g. CN/US/00).
+  command -v iw >/dev/null 2>&1 || return 0
+  iw reg get 2>/dev/null | awk '/^country /{gsub(":","",$2); print $2; exit}' || true
+}
+
 iw_channel_line() {
   # Best-effort: return the first "* <freq> MHz [<channel>] ..." line from `iw list`.
   # Output empty if not found or iw not available.
@@ -868,12 +886,6 @@ iw_channel_line() {
   [ -n "${ch:-}" ] || return 0
   command -v iw >/dev/null 2>&1 || return 0
   iw list 2>/dev/null | sed -n "s/^[[:space:]]*\* \([0-9][0-9]* MHz \[${ch}\].*\)$/\1/p" | head -n1 || true
-}
-
-iw_reg_country() {
-  # Best-effort: return country code from `iw reg get` (e.g. CN/US/00).
-  command -v iw >/dev/null 2>&1 || return 0
-  iw reg get 2>/dev/null | awk '/^country /{gsub(":","",$2); print $2; exit}' || true
 }
 
 iw_channels_for_band() {
@@ -891,17 +903,38 @@ iw_channels_for_band() {
       return 1
       ;;
   esac
-
   iw list 2>/dev/null | awk -v pat="$band_pat" '
     BEGIN{in_band=0}
     $0 ~ ("^[[:space:]]*" pat) {in_band=1; next}
     in_band && /^[[:space:]]*Band/ {in_band=0}
-    in_band && /^[[:space:]]*\*[[:space:]]*[0-9]+ MHz \[[0-9]+\]/ {
+    # Supported channel line starts with '*' (e.g. "* 2412 MHz [1]")
+    in_band && /^[[:space:]]*\*[[:space:]]*[0-9]+ MHz/ {
+      if (match($0, /[0-9]+ MHz/)) {
+        fstr = substr($0, RSTART, RLENGTH);
+        gsub(" MHz", "", fstr);
+        freq = fstr;
+      } else { freq = "" }
       n = index($0, "[")
       m = index($0, "]")
       if (n && m && m > n) {
         ch = substr($0, n+1, m-n-1)
-        print ch
+        state = ($0 ~ /disabled/) ? "disabled" : "supported"
+        print ch ":" freq ":" state
+      }
+    }
+    # Non-star lines (not supported) with channel info
+    in_band && /^[[:space:]]*[0-9]+ MHz/ && !/\*/ {
+      if (match($0, /[0-9]+ MHz/)) {
+        fstr = substr($0, RSTART, RLENGTH);
+        gsub(" MHz", "", fstr);
+        freq = fstr;
+      } else { freq = "" }
+      n = index($0, "[")
+      m = index($0, "]")
+      if (n && m && m > n) {
+        ch = substr($0, n+1, m-n-1)
+        state = ($0 ~ /disabled/) ? "disabled" : "disabled"
+        print ch ":" freq ":" state
       }
     }
   '
@@ -938,47 +971,47 @@ require_wifi_iface() {
 }
 
 load_cfg() {
-  CONNECTION_NAME="$DEFAULT_CONNECTION_NAME"
   IFACE="$DEFAULT_IFACE"
   UPLINK_IFACE="$DEFAULT_UPLINK_IFACE"
   IP_CIDR="$DEFAULT_IP_CIDR"
   ALLOW_PORTS="$DEFAULT_ALLOW_PORTS"
   SSID="$DEFAULT_SSID"
   PASSWORD="$DEFAULT_PASSWORD"
+  COUNTRY="$DEFAULT_COUNTRY"
   BAND="$DEFAULT_BAND"
   CHANNEL="$DEFAULT_CHANNEL"
-  COUNTRY="$DEFAULT_COUNTRY"
+  CHANNEL_WIDTH="$DEFAULT_CHANNEL_WIDTH"
 
   if [ -f "$CFG_FILE" ]; then
     # shellcheck disable=SC1090
     . "$CFG_FILE" || true
   fi
 
-  : "${CONNECTION_NAME:=$DEFAULT_CONNECTION_NAME}"
   : "${IFACE:=$DEFAULT_IFACE}"
   : "${UPLINK_IFACE:=$DEFAULT_UPLINK_IFACE}"
   : "${IP_CIDR:=$DEFAULT_IP_CIDR}"
   : "${ALLOW_PORTS:=$DEFAULT_ALLOW_PORTS}"
   : "${SSID:=$DEFAULT_SSID}"
   : "${PASSWORD:=$DEFAULT_PASSWORD}"
+  : "${COUNTRY:=$DEFAULT_COUNTRY}"
   : "${BAND:=$DEFAULT_BAND}"
   : "${CHANNEL:=$DEFAULT_CHANNEL}"
-  : "${COUNTRY:=$DEFAULT_COUNTRY}"
+  : "${CHANNEL_WIDTH:=$DEFAULT_CHANNEL_WIDTH}"
 }
 
 save_cfg() {
   umask 077
   if cat >"$CFG_FILE" <<EOF; then
-CONNECTION_NAME=$(printf '%s' "$CONNECTION_NAME")
 IFACE=$(printf '%s' "$IFACE")
 UPLINK_IFACE=$(printf '%s' "$UPLINK_IFACE")
 IP_CIDR=$(printf '%s' "$IP_CIDR")
 ALLOW_PORTS=$(printf '%s' "$ALLOW_PORTS")
 SSID=$(printf '%s' "$SSID")
 PASSWORD=$(printf '%s' "$PASSWORD")
+COUNTRY=$(printf '%s' "$(normalize_country "${COUNTRY:-}")")
 BAND=$(printf '%s' "$BAND")
 CHANNEL=$(printf '%s' "$CHANNEL")
-COUNTRY=$(printf '%s' "$(normalize_country "${COUNTRY:-}")")
+CHANNEL_WIDTH=$(printf '%s' "$CHANNEL_WIDTH")
 EOF
     return 0
   fi
@@ -1101,10 +1134,6 @@ form_get() {
 
 validate_cfg() {
   CFG_ERR=""
-  [ -n "$CONNECTION_NAME" ] || {
-    CFG_ERR="connectionName: required"
-    return 1
-  }
   # IFACE is optional; runtime application happens in start.cgi.
   if [ -n "${UPLINK_IFACE:-}" ] && ! is_iface_name "$UPLINK_IFACE"; then
     CFG_ERR="uplinkIface: invalid interface name"
@@ -1122,14 +1151,30 @@ validate_cfg() {
     fi
     return 1
   fi
+
   [ -n "$SSID" ] || {
     CFG_ERR="ssid: required"
     return 1
   }
+
   [ "${#PASSWORD}" -ge 8 ] || {
     CFG_ERR="password: length must be >= 8"
     return 1
   }
+
+  # COUNTRY is optional; runtime application happens in start.cgi.
+  c="$(normalize_country "${COUNTRY:-}")"
+  if [ -n "${c:-}" ]; then
+    case "$c" in
+      00) : ;;
+      [A-Z][A-Z]) : ;;
+      *)
+        CFG_ERR="country: must be empty or a 2-letter code (e.g. CN/US)"
+        return 1
+        ;;
+    esac
+  fi
+
   { [ "$BAND" = "bg" ] || [ "$BAND" = "a" ]; } || {
     CFG_ERR="band: must be bg (2.4G) or a (5G)"
     return 1
@@ -1157,17 +1202,17 @@ validate_cfg() {
     fi
   fi
 
-  # COUNTRY is optional; runtime application happens in start.cgi.
-  c="$(normalize_country "${COUNTRY:-}")"
-  if [ -n "${c:-}" ]; then
-    case "$c" in
-      00) : ;;
-      [A-Z][A-Z]) : ;;
-      *)
-        CFG_ERR="country: must be empty or a 2-letter code (e.g. CN/US)"
-        return 1
-        ;;
-    esac
+  # Validate channel width
+  case "$CHANNEL_WIDTH" in
+    20|40|80|160) : ;;
+    *)
+      CFG_ERR="channelWidth: must be one of 20,40,80,160"
+      return 1
+      ;;
+  esac
+  if [ "$BAND" = "bg" ] && [ "$CHANNEL_WIDTH" != "20" ] && [ "$CHANNEL_WIDTH" != "40" ]; then
+    CFG_ERR="channelWidth: for band bg (2.4G) only 20 or 40 MHz are allowed"
+    return 1
   fi
   return 0
 }

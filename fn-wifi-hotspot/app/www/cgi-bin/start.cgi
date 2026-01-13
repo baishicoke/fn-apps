@@ -9,6 +9,11 @@ load_cfg
 STEP="validate"
 validate_cfg || http_err "400 Bad Request" "${CFG_ERR:-invalid config}"
 
+# Apply country/regulatory domain if specified.
+if [ -n "${COUNTRY:-}" ]; then
+  apply_regdom "$COUNTRY" || true
+fi
+
 # Best-effort cleanup of old allow-port rules (in case previous stop didn't run)
 remove_allow_ports
 
@@ -71,66 +76,60 @@ if command -v iw >/dev/null 2>&1; then
   fi
 fi
 
-# 如果已有同名连接：仅当它是热点(AP)连接时直接删除并重建；否则视为名字冲突。
-if nmcli -t -f NAME con show 2>/dev/null | grep -Fxq "$CONNECTION_NAME"; then
-  # Guard against conflicts: same connection name but not a hotspot/AP profile.
-  con_type="$(nmcli -g connection.type con show "$CONNECTION_NAME" 2>/dev/null | head -n1 || true)"
-  con_mode=""
-  if [ "$con_type" = "802-11-wireless" ]; then
-    con_mode="$(nmcli -g 802-11-wireless.mode con show "$CONNECTION_NAME" 2>/dev/null | head -n1 || true)"
-  fi
-  if [ "$con_type" != "802-11-wireless" ] || [ "$con_mode" != "ap" ]; then
-    http_err "400 Bad Request" "Connection name conflict: '$CONNECTION_NAME' exists but is not a hotspot (type=${con_type:-unknown}, mode=${con_mode:-n/a}). Please choose another connectionName/SSID or rename the existing connection."
-  fi
-
-  # Always delete and recreate (avoid stale/partial profiles).
-  nmcli con down id "$CONNECTION_NAME" >/dev/null 2>&1 || true
-  nmcli con delete "$CONNECTION_NAME" >/dev/null 2>&1 || true
-
+if [ -n "${sta_prev_con:-}" ]; then
+  nmcli con down id "$sta_prev_con" >/dev/null 2>&1 || true
 fi
 
 out=""
-# If we're not using a virtual AP iface, we must disconnect STA first.
-if [ "$hotspot_iface" = "$IFACE" ]; then
-  nmcli dev disconnect "$IFACE" >/dev/null 2>&1 || true
-fi
-
-if ! out="$(nmcli dev wifi hotspot ifname "$hotspot_iface" ssid "$SSID" password "$PASSWORD" band "$BAND" channel "$CHANNEL" 2>&1)"; then
-  case "$out" in
-    *802.1X\ supplicant\ took\ too\ long*)
-      out="$out
-Tips:
-- If '$hotspot_iface' is currently connected to Wi-Fi, try disconnecting it first (nmcli dev disconnect $hotspot_iface).
-- Some adapters/drivers cannot run hotspot/AP mode (check: iw list | sed -n '/Supported interface modes:/,/^\s*$/p').
-- Check rfkill (rfkill list) and NetworkManager logs (journalctl -xe)."
-      ;;
-  esac
+# Create and activate the hotspot.
+# Always delete and recreate (avoid stale/partial profiles).
+nmcli con down id "$SSID" >/dev/null 2>&1 || true
+nmcli con delete "$SSID" >/dev/null 2>&1 || true
+nmcli device disconnect "$hotspot_iface" >/dev/null 2>&1 || true
+if ! out="$(nmcli dev wifi hotspot ifname "$hotspot_iface" con-name "$SSID" ssid "$SSID" password "$PASSWORD" band "$BAND" channel "$CHANNEL" 2>&1)"; then
+  nmcli con down id "$SSID" >/dev/null 2>&1 || true
+  nmcli con delete "$SSID" >/dev/null 2>&1 || true
+  nmcli device disconnect "$hotspot_iface" >/dev/null 2>&1 || true
+  if [ -n "${sta_prev_con:-}" ]; then
+    nmcli con up id "$sta_prev_con" >/dev/null 2>&1 || true
+  fi
   http_err "500 Internal Server Error" "$out"
 fi
 
-# Discover the actual connection created/activated on the hotspot device.
-hotspot_con="$(nmcli -g GENERAL.CONNECTION dev show "$hotspot_iface" 2>/dev/null | head -n1 || true)"
-case "$hotspot_con" in
-  "" | "--") hotspot_con="" ;;
-esac
-# Fallback (older NM): try the default name.
-if [ -z "$hotspot_con" ]; then
-  hotspot_con="Hotspot"
-fi
-
-# Rename hotspot connection to user-visible connectionName (and surface conflicts).
-if [ "$hotspot_con" != "$CONNECTION_NAME" ]; then
-  if ! nmcli con mod "$hotspot_con" connection.id "$CONNECTION_NAME" >/dev/null 2>&1; then
-    http_err "400 Bad Request" "Connection name conflict: cannot rename hotspot connection '$hotspot_con' to '$CONNECTION_NAME'. Please choose another connectionName/SSID or rename the existing connection."
-  fi
-  hotspot_con="$CONNECTION_NAME"
+# Try to apply requested channel width (best-effort). NetworkManager keys vary by version/driver;
+# we attempt common settings and ignore failures so hotspot creation can still proceed.
+if [ -n "${CHANNEL_WIDTH:-}" ]; then
+  case "${CHANNEL_WIDTH}" in
+    20)
+      nmcli con mod "$SSID" 802-11-wireless.ht-mode "" >/dev/null 2>&1 || true
+      nmcli con mod "$SSID" 802-11-wireless.vht-mode "" >/dev/null 2>&1 || true
+      ;;
+    40)
+      # Prefer HT40+; try both just in case
+      nmcli con mod "$SSID" 802-11-wireless.ht-mode HT40+ >/dev/null 2>&1 || nmcli con mod "$SSID" 802-11-wireless.ht-mode HT40- >/dev/null 2>&1 || true
+      nmcli con mod "$SSID" 802-11-wireless.vht-mode "" >/dev/null 2>&1 || true
+      ;;
+    80)
+      nmcli con mod "$SSID" 802-11-wireless.vht-mode VHT80 >/dev/null 2>&1 || true
+      nmcli con mod "$SSID" 802-11-wireless.ht-mode "" >/dev/null 2>&1 || true
+      ;;
+    160)
+      nmcli con mod "$SSID" 802-11-wireless.vht-mode VHT160 >/dev/null 2>&1 || true
+      nmcli con mod "$SSID" 802-11-wireless.ht-mode "" >/dev/null 2>&1 || true
+      ;;
+    *)
+      # unknown: ignore
+      ;;
+  esac
 fi
 # Apply optional IP/CIDR for shared network.
 if [ -n "${IP_CIDR:-}" ]; then
-  nmcli con mod "$hotspot_con" ipv4.method shared ipv4.addresses "$IP_CIDR" >/dev/null 2>&1 || true
+  nmcli con mod "$SSID" ipv4.method shared ipv4.addresses "$IP_CIDR" >/dev/null 2>&1 || true
 fi
-if ! nmcli con up id "$hotspot_con" >/dev/null 2>&1; then
-  http_err "500 Internal Server Error" "nmcli: failed to bring up hotspot connection '$hotspot_con'"
+if ! nmcli_out="$(nmcli con up id "$SSID" 2>&1)"; then
+  nmcli_err="$(sanitize_text "${nmcli_out:-}" || true)"
+  http_err "500 Internal Server Error" "nmcli: failed to bring up hotspot connection '$SSID'
+$nmcli_err"
 fi
 
 # Best-effort: ensure hotspot clients can reach internet.

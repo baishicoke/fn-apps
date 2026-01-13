@@ -6,7 +6,7 @@ STEP="init"
 cgi_install_trap
 
 # Output schema:
-# { "ok": true, "uplinks": ["eth0", "wwan0", ...] }
+# { "ok": true, "uplinks": ["eth0", "wlan0", ...] }
 if ! command -v nmcli >/dev/null 2>&1; then
   http_ok_begin
   json_begin_named_array "uplinks"
