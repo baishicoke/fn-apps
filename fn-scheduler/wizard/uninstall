@@ -18,11 +18,11 @@
                 "initValue": "keep",
                 "options": [
                     {
-                        "label": "保留数据（推荐）- 将来重新安装时可恢复",
+                        "label": "保留数据 - 重新安装时可恢复！（推荐）",
                         "value": "keep"
                     },
                     {
-                        "label": "删除所有数据 - 此操作不可恢复！",
+                        "label": "删除数据 - 此操作不可恢复！",
                         "value": "delete"
                     }
                 ],

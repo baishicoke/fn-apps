@@ -57,6 +57,35 @@ const elements = {
   currentTime: document.getElementById("currentTime"),
 };
 
+// 计算 API 基础路径：优先使用模块位置（支持通过 index.cgi 加载的情况），
+// 其次回退到 window.location.pathname。若路径包含 index.cgi，则保留到该片段。
+const API_BASE = (function () {
+  try {
+    let basePath = "/";
+    if (typeof import.meta !== 'undefined' && import.meta.url) {
+      try {
+        basePath = new URL('.', import.meta.url).pathname;
+      } catch (e) {
+        basePath = window.location.pathname || '/';
+      }
+    } else {
+      basePath = window.location.pathname || '/';
+    }
+    // 如果路径中包含 index.cgi，确保保留到 index.cgi/ 前缀
+    const idx = basePath.indexOf('index.cgi');
+    if (idx >= 0) {
+      return basePath.slice(0, idx + 'index.cgi'.length) + '/';
+    }
+    if (!basePath.endsWith('/')) {
+      const last = basePath.lastIndexOf('/');
+      basePath = last >= 0 ? basePath.slice(0, last + 1) : '/';
+    }
+    return basePath;
+  } catch (e) {
+    return '/';
+  }
+})();
+
 let taskTemplates = {};
 
 async function loadTemplates() {
@@ -395,7 +424,9 @@ function escapeHtml(value = "") {
 
 const api = {
   async request(url, options = {}) {
-    const response = await fetch(url, {
+    // Resolve relative urls like "api/tasks" against API_BASE
+    const resolved = /^(https?:)?\/\//.test(url) || url.startsWith('/') ? url : (API_BASE + url.replace(/^\/+/, ''));
+    const response = await fetch(resolved, {
       headers: { "Content-Type": "application/json" },
       ...options,
     });
@@ -442,7 +473,7 @@ const api = {
     return this.request('api/templates/import', { method: 'POST', body: JSON.stringify(mapping) });
   },
   exportTemplates() {
-    return fetch('api/templates/export').then((r) => r.json());
+    return this.request('api/templates/export').then((p) => p);
   },
   updateTask(id, data) {
     return this.request(`api/tasks/${id}`, {

@@ -4,14 +4,8 @@
             "title": "任务计划",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
-            "protocol": "http",
-            "port": "28256",
-            "url": "/",
-            "allUsers": false,
-            "control": {
-                "accessPerm": "readonly",
-                "fullUrlPerm":"readonly"
-            }
+            "url": "/cgi/ThirdParty/fn-scheduler/index.cgi/",
+            "allUsers": false
         }
     }
 }

@@ -5,25 +5,20 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import getpass
 import json
 import logging
 import os
-import hashlib
-import hmac
 import signal
 import socket
 import sqlite3
-import ssl
 import threading
-import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
-from functools import partial
+
 from typing import Any, Callable, Dict, List, Optional, Set
 from http import HTTPStatus
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from subprocess import CompletedProcess, TimeoutExpired, run
 
 try:
@@ -39,12 +34,21 @@ from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 ###############################################################################
 
 ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
-PARD_DIR = os.path.abspath(os.path.join(ROOT_DIR, os.pardir))
-STATIC_ROOT = os.path.join(PARD_DIR, "www")
+
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 28256
+DEFAULT_SOCKET_PATH = os.path.join(ROOT_DIR, "fn-scheduler.sock")
 DEFAULT_DB_PATH = os.path.join(ROOT_DIR, "scheduler.db")
-DEFAULT_AUTH_PATH = os.path.join(ROOT_DIR, "auth.json")
-IS_WINDOWS = os.name == "nt"
 DB_LATEST_VERSION = 2
+
+TASK_TIMEOUT = int(os.environ.get("SCHEDULER_TASK_TIMEOUT", "900"))
+CONDITION_TIMEOUT = int(os.environ.get("SCHEDULER_CONDITION_TIMEOUT", "60"))
+MAX_LOOKAHEAD_MINUTES = 60 * 24 * 366  # one leap year
+EVENT_TYPE_SCRIPT = "script"
+EVENT_TYPE_BOOT = "system_boot"
+EVENT_TYPE_SHUTDOWN = "system_shutdown"
+EVENT_TYPES = {EVENT_TYPE_SCRIPT, EVENT_TYPE_BOOT, EVENT_TYPE_SHUTDOWN}
+
 def _detect_default_account() -> str:
     for env_key in ("SCHEDULER_DEFAULT_ACCOUNT", "USERNAME", "USER"):
         value = os.environ.get(env_key)
@@ -54,63 +58,9 @@ def _detect_default_account() -> str:
         return getpass.getuser()
     except Exception:  # pragma: no cover - fallback only
         return "current_user"
-
 DEFAULT_ACCOUNT_NAME = _detect_default_account()
-DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 28256
-TASK_TIMEOUT = int(os.environ.get("SCHEDULER_TASK_TIMEOUT", "900"))
-CONDITION_TIMEOUT = int(os.environ.get("SCHEDULER_CONDITION_TIMEOUT", "60"))
-MAX_LOOKAHEAD_MINUTES = 60 * 24 * 366  # one leap year
-EVENT_TYPE_SCRIPT = "script"
-EVENT_TYPE_BOOT = "system_boot"
-EVENT_TYPE_SHUTDOWN = "system_shutdown"
-EVENT_TYPES = {EVENT_TYPE_SCRIPT, EVENT_TYPE_BOOT, EVENT_TYPE_SHUTDOWN}
 ALLOWED_ACCOUNT_GIDS = (0, 1000, 1001)
 POSIX_ACCOUNT_SUPPORT = os.name == "posix" and pwd is not None and grp is not None
-
-
-class AuthConfig:
-    def __init__(self, username: str, password_hash: str, realm: str = "Scheduler"):
-        self.username = username
-        self.password_hash = password_hash.lower()
-        self.realm = realm or "Scheduler"
-
-    def verify(self, username: str, password: str) -> bool:
-        if username != self.username:
-            return False
-        hashed = hashlib.sha256(password.encode("utf-8")).hexdigest().lower()
-        return hmac.compare_digest(hashed, self.password_hash)
-
-
-def load_auth_config(path: Optional[str]) -> Optional[AuthConfig]:
-    if not path:
-        return None
-    if not os.path.exists(path):
-        return None
-    with open(path, "r", encoding="utf-8") as fp:
-        raw = json.load(fp)
-    enabled = raw.get("enabled", True)
-    if not enabled:
-        return None
-    username = (raw.get("username") or "").strip()
-    if not username:
-        raise ValueError("auth 配置缺少 username")
-    realm = (raw.get("realm") or "Scheduler").strip()
-    password_hash = (raw.get("password_sha256") or "").strip()
-    password_plain = raw.get("password")
-    if password_hash and password_plain:
-        raise ValueError("auth 配置请仅保留 password 或 password_sha256 之一")
-    if password_plain:
-        password_hash = hashlib.sha256(password_plain.encode("utf-8")).hexdigest()
-    if not password_hash:
-        raise ValueError("auth 配置缺少 password/password_sha256")
-    return AuthConfig(username=username, password_hash=password_hash, realm=realm)
-
-
-def _env_truthy(value: Optional[str]) -> bool:
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def normalize_base_path(raw: Optional[str]) -> str:
@@ -133,51 +83,6 @@ def strip_wrapping_quotes(value: Optional[str]) -> Optional[str]:
     return trimmed
 
 
-def resolve_listen_host(host: str, prefer_ipv6: bool) -> str:
-    if not prefer_ipv6:
-        return host
-    if ":" in host:
-        return host
-    normalized = host.strip()
-    if not normalized or normalized == "0.0.0.0":
-        return "::"
-    if normalized in {"127.0.0.1", "localhost"}:
-        return "::1"
-    raise ValueError("IPv6 模式下请提供合法的 IPv6 地址 (例如 ::)")
-
-
-def generate_self_signed_cert(days: int, subject: str, openssl_bin: Optional[str] = None) -> tuple[str, str, str]:
-    temp_dir = tempfile.mkdtemp(prefix="fn-scheduler-ssl-")
-    cert_path = os.path.join(temp_dir, "cert.pem")
-    key_path = os.path.join(temp_dir, "key.pem")
-    cmd = [
-        openssl_bin or os.environ.get("SCHEDULER_OPENSSL_BIN", "openssl"),
-        "req",
-        "-x509",
-        "-nodes",
-        "-newkey",
-        "rsa:2048",
-        "-days",
-        str(days),
-        "-subj",
-        subject or "/CN=localhost",
-        "-keyout",
-        key_path,
-        "-out",
-        cert_path,
-    ]
-    try:
-        completed = run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise RuntimeError("系统未安装 openssl，无法自动生成证书，请手动提供 --ssl-cert/--ssl-key") from exc
-    if completed.returncode != 0:
-        error_text = completed.stderr or completed.stdout or "openssl 执行失败"
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise RuntimeError(f"生成自签名证书失败: {error_text}")
-    return cert_path, key_path, temp_dir
-
-
 logger = logging.getLogger("fn_scheduler")
 logging.basicConfig(
     level=logging.INFO,
@@ -193,6 +98,7 @@ def time_now() -> datetime:
     else:
         # 带时区信息的 UTC 时间
         return datetime.now(timezone.utc)
+
 
 def isoformat(dt: Optional[datetime]) -> Optional[str]:
     if dt is None:
@@ -248,15 +154,15 @@ def ensure_account_allowed(account: str) -> str:
     allowed = list_allowed_accounts()
     if not allowed:
         if POSIX_ACCOUNT_SUPPORT:
-            raise ValueError("系统中未找到属于 0/1000/1001 组的账号")
-        raise ValueError("当前系统无法确定默认账号")
+            raise ValueError("no allowed accounts found in system groups 0/1000/1001")
+        raise ValueError("current system cannot determine default account")
     if not POSIX_ACCOUNT_SUPPORT:
         default_account = allowed[0]
         if account and account != default_account:
-            raise ValueError(f"Windows 环境仅支持使用账号 {default_account}")
+            raise ValueError(f"Windows environment only supports using account {default_account}")
         return default_account
     if account not in allowed:
-        raise ValueError("账号必须属于系统组 0/1000/1001 的成员")
+        raise ValueError("account must belong to system groups 0/1000/1001")
     return account
 
 
@@ -504,9 +410,9 @@ class Database:
         name = (payload.get("name") or "").strip()
         script_body = (payload.get("script_body") or "").strip()
         if not name:
-            raise ValueError("模板名称必填")
+            raise ValueError("template name is required")
         if not script_body:
-            raise ValueError("模板内容不能为空")
+            raise ValueError("template script body is required")
         if not key:
             # 自动生成 key（基于 name）
             base = name.lower().replace(" ", "_")
@@ -537,9 +443,9 @@ class Database:
         script_body = payload.get("script_body", existing.get("script_body", "")).strip()
         key = payload.get("key", existing.get("key", "")).strip()
         if not name:
-            raise ValueError("模板名称必填")
+            raise ValueError("template name is required")
         if not script_body:
-            raise ValueError("模板内容不能为空")
+            raise ValueError("template script body is required")
         updated_at = isoformat(time_now())
         with self._lock:
             self._conn.execute(
@@ -829,13 +735,13 @@ class Database:
         if not account and not POSIX_ACCOUNT_SUPPORT:
             account = DEFAULT_ACCOUNT_NAME
         if not name:
-            raise ValueError("任务名称必填")
+            raise ValueError("task name is required")
         if not account:
-            raise ValueError("账号必填")
+            raise ValueError("account is required")
         account = ensure_account_allowed(account)
         script_body = payload.get("script_body", "").strip()
         if not script_body:
-            raise ValueError("任务内容不能为空")
+            raise ValueError("script body is required")
 
         is_active = bool(payload.get("is_active", True))
         schedule_expression_raw = payload.get("schedule_expression")
@@ -850,7 +756,7 @@ class Database:
             try:
                 pre_task_ids = json.loads(pre_task_ids)
             except json.JSONDecodeError as exc:
-                raise ValueError("前置任务格式错误") from exc
+                raise ValueError("pre_task_ids format error") from exc
         current_id = payload.get("id")
         if current_id is not None:
             current_id = int(current_id)
@@ -868,7 +774,7 @@ class Database:
 
         if trigger_type == "schedule":
             if not schedule_expression:
-                raise ValueError("定时任务需要 Cron 表达式")
+                raise ValueError("schedule expression is required")
             cron = CronExpression(schedule_expression)
             if not is_update or not next_run_at:
                 next_run_at = isoformat(cron.next_after(time_now()))
@@ -876,10 +782,10 @@ class Database:
             event_type = EVENT_TYPE_SCRIPT
         else:
             if event_type not in EVENT_TYPES:
-                raise ValueError("事件类型不支持")
+                raise ValueError("event type is not supported")
             if event_type == EVENT_TYPE_SCRIPT:
                 if not condition_script:
-                    raise ValueError("事件任务需要条件脚本")
+                    raise ValueError("event tasks require condition script")
                 last_condition_check_at = payload.get("last_condition_check_at")
             else:
                 condition_script = None
@@ -922,7 +828,7 @@ class TaskRunner(threading.Thread):
             log_text, status = self._execute_script(self.task["script_body"], TASK_TIMEOUT)
         except Exception as exc:  # pylint: disable=broad-except
             status = "failed"
-            log_text = f"任务执行异常: {exc!r}"
+            log_text = f"task execution exception: {exc!r}"
         finally:
             self.db.finalize_result(result_id, status, log_text)
             self.db.update_last_run(task_id)
@@ -952,7 +858,7 @@ class TaskRunner(threading.Thread):
                 preexec_fn=preexec_fn,
             )
         except TimeoutExpired as exc:
-            return f"任务执行超时 (>{timeout}s): {exc}", "failed"
+            return f"task execution timeout (> {timeout}s): {exc}", "failed"
         except Exception as exc:  # pylint: disable=broad-except
             return str(exc), "failed"
         output = (completed.stdout or "") + (completed.stderr or "")
@@ -982,7 +888,7 @@ class TaskRunner(threading.Thread):
         try:
             pw_record = pwd.getpwnam(account)  # type: ignore[attr-defined]
         except KeyError as exc:
-            raise RuntimeError(f"账号 {account} 不存在，无法执行任务") from exc
+            raise RuntimeError(f"account {account} does not exist, cannot execute task") from exc
 
         target_uid = pw_record.pw_uid
         target_gid = pw_record.pw_gid
@@ -992,13 +898,13 @@ class TaskRunner(threading.Thread):
             return (None, pw_record.pw_dir)
 
         if current_uid != 0:
-            raise PermissionError("调度服务需以 root 运行才能切换任务执行账号")
+            raise PermissionError("scheduler service must run as root to switch task execution account")
 
         supplemental: List[int] = []
         try:
             supplemental = [entry.gr_gid for entry in grp.getgrall() if account in entry.gr_mem]  # type: ignore[attr-defined]
         except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("获取账号 %s 附加组失败: %s", account, exc)
+            logger.warning("failed to get supplemental groups for account %s: %s", account, exc)
 
         groups = sorted(set([target_gid, *supplemental]))
 
@@ -1153,34 +1059,55 @@ class SchedulerHTTPServer(ThreadingHTTPServer):
         *,
         base_path: str = "/",
         prefer_ipv6: bool = False,
-        auth_config: Optional[AuthConfig] = None,
+        unix_socket_path: Optional[str] = None,
+        bind_and_activate: bool = True,
     ):
         host = server_address[0] if server_address else ""
         port = server_address[1] if len(server_address) > 1 else 0
-        use_ipv6 = False
-        if (prefer_ipv6 or (host and ":" in host)) and socket.has_ipv6:
-            use_ipv6 = True
-        elif (prefer_ipv6 or (host and ":" in host)) and not socket.has_ipv6:
-            raise RuntimeError("当前系统不支持 IPv6 监听")
 
         self.base_path = base_path or "/"
-        if use_ipv6:
-            self.address_family = socket.AF_INET6
-            if len(server_address) == 2:
-                server_address = (host, port, 0, 0)
-        super().__init__(server_address, handler_class)
-        if use_ipv6:
+
+        # If unix_socket_path is provided, create a UNIX domain socket and
+        # initialize the HTTP server without binding/activating the default
+        # TCP socket. Otherwise, behave as normal TCP server.
+        if unix_socket_path:
+            # Initialize without binding so we can replace the socket.
+            super().__init__(("", 0), handler_class, bind_and_activate=False)
+            # ensure old socket file removed
             try:
-                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-            except OSError:
+                if os.path.exists(unix_socket_path):
+                    os.unlink(unix_socket_path)
+            except Exception:
                 pass
-        self.auth_config = auth_config
+            uds = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            uds.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            uds.bind(unix_socket_path)
+            # let HTTPServer.server_activate perform the listen
+            self.socket = uds
+            self.address_family = socket.AF_UNIX
+            # set a human-readable server_address
+            self.server_address = unix_socket_path
+            # activate server (calls listen)
+            self.server_activate()
+        else:
+            use_ipv6 = False
+            if (prefer_ipv6 or (host and ":" in host)) and socket.has_ipv6:
+                use_ipv6 = True
+            elif (prefer_ipv6 or (host and ":" in host)) and not socket.has_ipv6:
+                raise RuntimeError("current system does not support IPv6 listening")
+            if use_ipv6:
+                self.address_family = socket.AF_INET6
+                if len(server_address) == 2:
+                    server_address = (host, port, 0, 0)
+            super().__init__(server_address, handler_class, bind_and_activate=bind_and_activate)
+            if use_ipv6:
+                try:
+                    self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                except OSError:
+                    pass
 
 
-class SchedulerRequestHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, directory: str | None = None, **kwargs):  # type: ignore[override]
-        super().__init__(*args, directory=directory or STATIC_ROOT, **kwargs)
-
+class SchedulerRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if not self._require_auth():
             return
@@ -1189,7 +1116,7 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/"):
             self._handle_api("GET")
             return
-        self._serve_static()
+        self.send_error(HTTPStatus.NOT_FOUND, "Unsupported path")
 
     def do_HEAD(self) -> None:  # noqa: N802
         if not self._require_auth():
@@ -1199,7 +1126,7 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/"):
             self.send_error(HTTPStatus.METHOD_NOT_ALLOWED, "HEAD not supported for API")
             return
-        super().do_HEAD()
+        self.send_error(HTTPStatus.NOT_FOUND, "Unsupported path")
 
     def do_POST(self) -> None:  # noqa: N802
         if not self._require_auth():
@@ -1231,15 +1158,6 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Unsupported path")
 
-    # Static --------------------------------------------------------------
-    def _serve_static(self) -> None:
-        # Fallback to index.html for SPA routes
-        path = self.translate_path(self.path)
-        if os.path.isdir(path):
-            path = os.path.join(path, "index.html")
-        if not os.path.exists(path) and not os.path.splitext(self.path)[1]:
-            self.path = "/index.html"
-        return super().do_GET()
 
     # API routing ---------------------------------------------------------
     def _handle_api(self, method: str) -> None:
@@ -1378,7 +1296,7 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
                 return
             # 支持直接上传 mapping 对象
             if not isinstance(payload, dict):
-                raise ValueError("导入数据应为对象 mapping")
+                raise ValueError("import data should be an object mapping")
             summary = ctx.db.import_templates(payload)
             self._json_response({"imported": summary})
             return
@@ -1430,20 +1348,20 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         action = (payload.get("action") or "").strip().lower()
         task_ids_payload = payload.get("task_ids")
         if not isinstance(task_ids_payload, list) or not task_ids_payload:
-            raise ValueError("task_ids 不能为空")
+            raise ValueError("task_ids cannot be empty")
         task_ids = []
         for raw in task_ids_payload:
             try:
                 tid = int(raw)
             except (TypeError, ValueError) as exc:
-                raise ValueError("task_ids 必须为整数") from exc
+                raise ValueError("task_ids must contain valid task ids") from exc
             if tid > 0 and tid not in task_ids:
                 task_ids.append(tid)
         if not task_ids:
-            raise ValueError("未提供有效的 task_ids")
+            raise ValueError("task_ids must contain valid task ids")
 
         if action not in {"delete", "enable", "disable", "run"}:
-            raise ValueError("action 不支持")
+            raise ValueError("action is not supported")
 
         result: Dict[str, List[int]] = {"missing": []}
         runners: List[TaskRunner] = []
@@ -1492,10 +1410,10 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         if ctx.db.has_running_instance(task_id):
-            self._json_response({"error": "任务正在执行"}, status=HTTPStatus.CONFLICT)
+            self._json_response({"error": "task is running"}, status=HTTPStatus.CONFLICT)
             return
         if not ctx.engine._dependencies_met(task):  # pylint: disable=protected-access
-            self._json_response({"error": "前置任务尚未成功"}, status=HTTPStatus.BAD_REQUEST)
+            self._json_response({"error": "dependencies are not met"}, status=HTTPStatus.BAD_REQUEST)
             return
         TaskRunner(ctx.db, task, "manual").start()
         self._json_response({"queued": True})
@@ -1548,18 +1466,16 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format_: str, *args: Any) -> None:  # noqa: D401
-        logger.info("%s - - %s", self.address_string(), format_ % args)
+        ca = getattr(self, "client_address", None)
+        if isinstance(ca, (list, tuple)) and ca:
+            addr = ca[0]
+        else:
+            addr = ca or "-"
+        logger.info("%s - - %s", addr, format_ % args)
 
     def _require_auth(self) -> bool:
-        auth_config: Optional[AuthConfig] = getattr(self.server, "auth_config", None)  # type: ignore[attr-defined]
-        if not auth_config:
-            return True
-        header = self.headers.get("Authorization")
-        username, password = self._parse_basic_header(header)
-        if username and password and auth_config.verify(username, password):
-            return True
-        self._send_auth_challenge(auth_config.realm)
-        return False
+        # Authentication handled by front-end/proxy; backend accepts requests.
+        return True
 
     def _send_auth_challenge(self, realm: str) -> None:
         self.send_response(HTTPStatus.UNAUTHORIZED)
@@ -1568,19 +1484,6 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Authentication required")
 
-    @staticmethod
-    def _parse_basic_header(header: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-        if not header or not header.startswith("Basic "):
-            return (None, None)
-        token = header.split(" ", 1)[1].strip()
-        try:
-            decoded = base64.b64decode(token).decode("utf-8")
-        except Exception:  # pylint: disable=broad-except
-            return (None, None)
-        if ":" not in decoded:
-            return (None, None)
-        username, password = decoded.split(":", 1)
-        return (username, password)
 
     def _ensure_base_path(self) -> bool:
         base_path = getattr(self.server, "base_path", "/")  # type: ignore[attr-defined]
@@ -1603,71 +1506,48 @@ class SchedulerRequestHandler(SimpleHTTPRequestHandler):
 ###############################################################################
 
 def run_server(
-    host: str,
-    port: int,
     db_path: str,
-    ssl_cert: Optional[str] = None,
-    ssl_key: Optional[str] = None,
     base_path: str = "/",
     prefer_ipv6: bool = False,
-    enable_ssl: bool = False,
-    auth_path: Optional[str] = None,
+    unix_socket: Optional[str] = None,
 ) -> None:
     db_path = strip_wrapping_quotes(db_path) or DEFAULT_DB_PATH
-    ssl_cert = strip_wrapping_quotes(ssl_cert)
-    ssl_key = strip_wrapping_quotes(ssl_key)
     base_path = strip_wrapping_quotes(base_path) or "/"
-    auth_path = strip_wrapping_quotes(auth_path)
 
     database = Database(db_path)
     engine = SchedulerEngine(database)
     ctx = SchedulerContext(database, engine)
-    handler_class = partial(SchedulerRequestHandler, directory=STATIC_ROOT)
+    handler_class = SchedulerRequestHandler
     normalized_base = normalize_base_path(base_path)
-    auth_config_path = auth_path or DEFAULT_AUTH_PATH
-    auth_config = None
-    if auth_config_path and os.path.exists(auth_config_path):
-        auth_config = load_auth_config(auth_config_path)
-    elif auth_path:
-        logger.warning("auth 配置文件不存在: %s，Basic Auth 未启用", auth_config_path)
-    if auth_config:
-        logger.info("Basic Auth enabled for Web UI (realm=%s, user=%s)", auth_config.realm, auth_config.username)
-    httpd = SchedulerHTTPServer(
-        (host, port),
-        handler_class,
-        base_path=normalized_base,
-        prefer_ipv6=prefer_ipv6,
-        auth_config=auth_config,
-    )
+
+    # Note: authentication and TLS options are intentionally ignored
+    # because front-end (index.cgi) handles authentication and TLS termination.
+    # Use internal defaults for TCP bind if needed; CLI no longer exposes host/port.
+    host = DEFAULT_HOST
+    port = DEFAULT_PORT
+    if unix_socket:
+        httpd = SchedulerHTTPServer(
+            (host, port),
+            handler_class,
+            base_path=normalized_base,
+            prefer_ipv6=prefer_ipv6,
+            unix_socket_path=unix_socket,
+            bind_and_activate=False,
+        )
+    else:
+        httpd = SchedulerHTTPServer(
+            (host, port),
+            handler_class,
+            base_path=normalized_base,
+            prefer_ipv6=prefer_ipv6,
+        )
     httpd.app_context = ctx  # type: ignore[attr-defined]
 
-    generated_cert_dir: Optional[str] = None
-    if enable_ssl and not (ssl_cert and ssl_key):
-        cert_days = int(os.environ.get("SCHEDULER_SSL_DAYS", "365"))
-        cert_subject = os.environ.get("SCHEDULER_SSL_SUBJECT", "/CN=localhost")
-        try:
-            ssl_cert, ssl_key, generated_cert_dir = generate_self_signed_cert(cert_days, cert_subject)
-            logger.info("Generated self-signed certificate (subject=%s, days=%s)", cert_subject, cert_days)
-        except Exception as exc:  # pylint: disable=broad-except
-            raise RuntimeError("启用 --ssl 失败：无法生成自签名证书，请确认 openssl 可用或手动提供证书") from exc
-
+    # Setup TLS if needed (not typical for backend service)
     scheme = "http"
-    if ssl_cert or ssl_key:
-        if not ssl_cert or not ssl_key:
-            raise ValueError("启用 HTTPS 需要同时提供证书和私钥路径")
-        if not os.path.exists(ssl_cert):
-            raise FileNotFoundError(f"SSL 证书不存在: {ssl_cert}")
-        if not os.path.exists(ssl_key):
-            raise FileNotFoundError(f"SSL 私钥不存在: {ssl_key}")
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        if hasattr(context, "minimum_version") and hasattr(ssl, "TLSVersion"):
-            context.minimum_version = ssl.TLSVersion.TLSv1_2  # type: ignore[attr-defined]
-        context.load_cert_chain(certfile=ssl_cert, keyfile=ssl_key)
-        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-        scheme = "https"
-        logger.info("HTTPS enabled using cert=%s key=%s", ssl_cert, ssl_key)
 
     shutdown_event = threading.Event()
+    created_unix_socket = unix_socket if unix_socket else None
 
     def _handle_signal(signum: int, _: Any | None) -> None:
         if shutdown_event.is_set():
@@ -1680,14 +1560,23 @@ def run_server(
         if hasattr(signal, sig_name):
             signal.signal(getattr(signal, sig_name), _handle_signal)
 
-    logger.info(
-        "Starting scheduler on %s://%s:%s%s (db=%s)",
-        scheme,
-        host,
-        port,
-        normalized_base,
-        db_path,
-    )
+    if unix_socket:
+        logger.info(
+            "Starting scheduler on %s+unix://%s%s (db=%s)",
+            scheme,
+            created_unix_socket,
+            normalized_base,
+            db_path,
+        )
+    else:
+        logger.info(
+            "Starting scheduler on %s://%s:%s%s (db=%s)",
+            scheme,
+            host,
+            port,
+            normalized_base,
+            db_path,
+        )
     engine.start()
     try:
         httpd.serve_forever()
@@ -1697,20 +1586,21 @@ def run_server(
         engine.stop()
         database.close()
         httpd.server_close()
-        if generated_cert_dir:
-            shutil.rmtree(generated_cert_dir, ignore_errors=True)
-
+        # cleanup unix socket file if we created one
+        if created_unix_socket:
+            try:
+                if os.path.exists(created_unix_socket):
+                    os.unlink(created_unix_socket)
+            except Exception:
+                pass
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scheduler Service")
     parser.add_argument(
-        "--host",
-        default=os.environ.get("SCHEDULER_HOST", DEFAULT_HOST),
-    )
-    parser.add_argument(
-        "--port",
-        default=int(os.environ.get("SCHEDULER_PORT", DEFAULT_PORT)),
-        type=int,
+        "--unix-socket",
+        dest="unix_socket",
+        default=os.environ.get("SCHEDULER_UNIX_SOCKET", DEFAULT_SOCKET_PATH),
+        help="Path to UNIX domain socket to bind (default: system temp fn-scheduler.sock)",
     )
     parser.add_argument(
         "--db",
@@ -1718,66 +1608,18 @@ def parse_args() -> argparse.Namespace:
         help="Path to SQLite database file",
     )
     parser.add_argument(
-        "--ssl-cert",
-        default=os.environ.get("SCHEDULER_SSL_CERT"),
-        help="PEM certificate file for enabling HTTPS",
-    )
-    parser.add_argument(
-        "--ssl-key",
-        default=os.environ.get("SCHEDULER_SSL_KEY"),
-        help="PEM private key file for enabling HTTPS",
-    )
-    ssl_default = _env_truthy(os.environ.get("SCHEDULER_ENABLE_SSL"))
-    parser.add_argument(
-        "--ssl",
-        dest="ssl",
-        action="store_true",
-        help="Enable HTTPS even when no cert/key provided (auto self-signed)",
-    )
-    parser.add_argument(
-        "--no-ssl",
-        dest="ssl",
-        action="store_false",
-        help="Disable HTTPS auto mode even if env is set",
-    )
-    parser.add_argument(
-        "--auth",
-        default=os.environ.get("SCHEDULER_AUTH"),
-        help="Path to Basic Auth JSON config (default auth.json if present)",
-    )
-    parser.add_argument(
         "--base-path",
         default=os.environ.get("SCHEDULER_BASE_PATH", "/"),
         help="Base URL path to mount the scheduler under (default '/')",
     )
-    ipv6_default = _env_truthy(os.environ.get("SCHEDULER_ENABLE_IPV6"))
-    parser.add_argument(
-        "--ipv6",
-        dest="ipv6",
-        action="store_true",
-        help="Prefer IPv6 sockets (or set SCHEDULER_ENABLE_IPV6=1)",
-    )
-    parser.add_argument(
-        "--no-ipv6",
-        dest="ipv6",
-        action="store_false",
-        help="Force IPv4 sockets even if IPv6 env var is set",
-    )
-    parser.set_defaults(ipv6=ipv6_default, ssl=ssl_default)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    listen_host = resolve_listen_host(args.host, args.ipv6)
     run_server(
-        listen_host,
-        args.port,
         args.db,
-        ssl_cert=args.ssl_cert,
-        ssl_key=args.ssl_key,
         base_path=args.base_path,
-        prefer_ipv6=args.ipv6,
-        enable_ssl=args.ssl,
-        auth_path=args.auth,
+        prefer_ipv6=False,
+        unix_socket=args.unix_socket,
     )
