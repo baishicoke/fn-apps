@@ -1,15 +1,17 @@
 #!/bin/bash
 
-# 脚本名称: index.cgi
-#   版本: 1.0.0
-#   作者: FNOSP/xieguanru
-#   协作者: FNOSP/MR_XIAOBO
-# 创建日期: 2025-11-18
-# 最后修改: 2025-11-19
-#   描述: 这个脚本用于演示Shell脚本的各种注释方式
-# 使用方式: 文件重命名, 从linux_shell_cgi_index.sh改成index.cgi,
-#          放置应用包/ui路径下, 记得 chmod +x index.cgi 赋权
-#   许可证: MIT
+# ============================================================================
+# File Name       : index.cgi
+# Version         : 1.0.0
+# Author          : FNOSP/xieguanru
+# Collaborators   : FNOSP/MR_XIAOBO, RROrg/Ing
+# Created         : 2025-11-18
+# Last Modified   : 2026-01-14
+# Description     : CGI script for serving static files.
+# Usage           : Rename this file to index.cgi, place it under the application's /ui directory,
+#                   and run `chmod +x index.cgi` to grant execute permission.
+# License         : MIT
+# ============================================================================
 
 # 【注意】修改你自己的静态文件根目录，以本应用为例：
 BASE_PATH="/var/apps/fn-scheduler/target/www"
@@ -36,54 +38,81 @@ if [ -z "$REL_PATH" ] || [ "$REL_PATH" = "/" ]; then
   REL_PATH="/index.html"
 fi
 
-# 如果是后端 API 请求，代理到后端（支持 UNIX socket 或 TCP）
-if [[ "$REL_PATH" == /api* ]]; then
-  # Prefer explicit BACKEND_UNIX_SOCKET, else SCHEDULER_UNIX_SOCKET, else common install path
+# 如果是后端 API 请求，代理到后端（支持 UNIX socket 或 TCP），增强支持更多 HTTP headers 和错误处理
+if [[ $REL_PATH == /api* ]]; then
   BACKEND_UNIX_SOCKET="${BACKEND_UNIX_SOCKET:-${SCHEDULER_UNIX_SOCKET:-/usr/local/apps/@appdata/fn-scheduler/scheduler.sock}}"
   BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
   BACKEND_PORT="${BACKEND_PORT:-28256}"
 
+  # 收集请求体
   if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
     BODY_TMP=$(mktemp)
-    dd bs=1 count="$CONTENT_LENGTH" of="$BODY_TMP" 2>/dev/null || cat > "$BODY_TMP"
+    dd bs=1 count="$CONTENT_LENGTH" of="$BODY_TMP" 2>/dev/null || cat >"$BODY_TMP"
   else
     BODY_TMP=$(mktemp)
-    : > "$BODY_TMP"
+    : >"$BODY_TMP"
   fi
 
   HDR_TMP=$(mktemp)
   OUT_BODY=$(mktemp)
 
-  curl_args=( -sS -D "$HDR_TMP" -o "$OUT_BODY" -X "$REQUEST_METHOD" )
-  if [ -n "$CONTENT_TYPE" ]; then
-    curl_args+=( -H "Content-Type: $CONTENT_TYPE" )
-  fi
-  # forward Authorization headers if present
-  if [ -n "$HTTP_AUTHORIZATION" ]; then
-    curl_args+=( -H "Authorization: $HTTP_AUTHORIZATION" )
-  elif [ -n "$REDIRECT_HTTP_AUTHORIZATION" ]; then
-    curl_args+=( -H "Authorization: $REDIRECT_HTTP_AUTHORIZATION" )
+  # 收集所有 HTTP 请求头
+  curl_args=(-sS -D "$HDR_TMP" -o "$OUT_BODY" -X "$REQUEST_METHOD")
+  for hdr in CONTENT_TYPE HTTP_AUTHORIZATION REDIRECT_HTTP_AUTHORIZATION HTTP_ACCEPT HTTP_COOKIE HTTP_USER_AGENT HTTP_REFERER; do
+    val="${!hdr}"
+    case "$hdr" in
+      CONTENT_TYPE) [ -n "$val" ] && curl_args+=(-H "Content-Type: $val") ;;
+      HTTP_AUTHORIZATION | REDIRECT_HTTP_AUTHORIZATION) [ -n "$val" ] && curl_args+=(-H "Authorization: $val") ;;
+      HTTP_ACCEPT) [ -n "$val" ] && curl_args+=(-H "Accept: $val") ;;
+      HTTP_COOKIE) [ -n "$val" ] && curl_args+=(-H "Cookie: $val") ;;
+      HTTP_USER_AGENT) [ -n "$val" ] && curl_args+=(-H "User-Agent: $val") ;;
+      HTTP_REFERER) [ -n "$val" ] && curl_args+=(-H "Referer: $val") ;;
+    esac
+  done
+
+  # 支持 X-Forwarded-For
+  if [ -n "$REMOTE_ADDR" ]; then
+    curl_args+=(-H "X-Forwarded-For: $REMOTE_ADDR")
   fi
 
   case "$REQUEST_METHOD" in
-    POST|PUT|PATCH)
-      curl_args+=( --data-binary "@$BODY_TMP" )
+    POST | PUT | PATCH)
+      curl_args+=(--data-binary "@$BODY_TMP")
       ;;
   esac
 
-  if [ -n "$BACKEND_UNIX_SOCKET" ]; then
+  # 代理请求
+  if [ -n "$BACKEND_UNIX_SOCKET" ] && [ -S "$BACKEND_UNIX_SOCKET" ]; then
     BACKEND_URL="http://localhost${REL_PATH}"
     curl --unix-socket "$BACKEND_UNIX_SOCKET" "${curl_args[@]}" "$BACKEND_URL"
+    CURL_EXIT=$?
   else
     BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}${REL_PATH}"
     curl "${curl_args[@]}" "$BACKEND_URL"
+    CURL_EXIT=$?
   fi
 
+  # 解析响应
   status_line=$(head -n1 "$HDR_TMP" 2>/dev/null || echo "HTTP/1.1 502 Bad Gateway")
   status_code=$(echo "$status_line" | awk '{print $2}' 2>/dev/null || echo "502")
-  resp_ct=$(grep -i '^Content-Type:' "$HDR_TMP" | head -n1 | sed -e 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//' )
+  resp_ct=$(grep -i '^Content-Type:' "$HDR_TMP" | head -n1 | sed -e 's/^[Cc]ontent-[Tt]ype:[[:space:]]*//')
   if [ -z "$resp_ct" ]; then
     resp_ct="application/octet-stream"
+  fi
+
+  # 透传部分响应头
+  grep -i -E '^(Set-Cookie:|Cache-Control:|Expires:|Access-Control-Allow-|Content-Disposition:)' "$HDR_TMP" | while read -r h; do
+    echo "$h"
+  done
+
+  # 错误处理
+  if [ "$CURL_EXIT" -ne 0 ]; then
+    echo "Status: 502 Bad Gateway"
+    echo "Content-Type: text/plain; charset=utf-8"
+    echo ""
+    echo "502 Bad Gateway: Backend unavailable"
+    rm -f "$HDR_TMP" "$BODY_TMP" "$OUT_BODY"
+    exit 0
   fi
 
   echo "Status: $status_code"
@@ -103,7 +132,7 @@ if echo "$TARGET_FILE" | grep -q '\.\.'; then
   echo "Status: 400 Bad Request"
   echo "Content-Type: text/plain; charset=utf-8"
   echo ""
-  echo "Bad Request"
+  echo "Bad Request: Path traversal detected"
   exit 0
 fi
 
@@ -118,7 +147,9 @@ fi
 
 # 3. 根据扩展名简单判断 Content-Type
 ext="${TARGET_FILE##*.}"
-case "$ext" in
+ext_lc="$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')"
+
+case "$ext_lc" in
   html | htm)
     mime="text/html; charset=utf-8"
     ;;
@@ -146,13 +177,48 @@ case "$ext" in
   txt | log)
     mime="text/plain; charset=utf-8"
     ;;
+  json)
+    mime="application/json; charset=utf-8"
+    ;;
+  xml)
+    mime="application/xml; charset=utf-8"
+    ;;
   *)
     mime="application/octet-stream"
     ;;
 esac
 
-# 4. 输出头 + 文件内容
-echo "Content-Type: $mime"
-echo ""
+# 支持 If-Modified-Since 返回 304
+mtime=0
+if stat_cmd="$(command -v stat 2>/dev/null)" && [ -n "$stat_cmd" ]; then
+  mtime=$(stat -c %Y "$TARGET_FILE" 2>/dev/null || echo 0)
+  size=$(stat -c %s "$TARGET_FILE" 2>/dev/null || echo 0)
+else
+  # 回退：用 Python 获取
+  size=$(python -c "import os,sys;print(os.path.getsize(sys.argv[1]))" "$TARGET_FILE" 2>/dev/null || echo 0)
+  mtime=$(python -c "import os,sys;print(int(os.path.getmtime(sys.argv[1])))" "$TARGET_FILE" 2>/dev/null || echo 0)
+fi
+
+last_mod="$(date -u -d "@$mtime" +"%a, %d %b %Y %H:%M:%S GMT" 2>/dev/null || date -u -r "$TARGET_FILE" +"%a, %d %b %Y %H:%M:%S GMT" 2>/dev/null || echo "")"
+
+if [ -n "${HTTP_IF_MODIFIED_SINCE:-}" ]; then
+  ims_epoch=$(date -d "$HTTP_IF_MODIFIED_SINCE" +%s 2>/dev/null || echo 0)
+  if [ "$ims_epoch" -ge "$mtime" ] && [ "$mtime" -gt 0 ]; then
+    echo "Status: 304 Not Modified"
+    echo ""
+    exit 0
+  fi
+fi
+
+# 4. 输出头
+printf 'Content-Type: %s\r\n' "$mime"
+printf 'Content-Length: %s\r\n' "$size"
+printf 'Last-Modified: %s\r\n' "$last_mod"
+printf '\r\n'
+
+# 对于 HEAD 请求只返回头
+if [ "${REQUEST_METHOD:-GET}" = "HEAD" ]; then
+  exit 0
+fi
 
 cat "$TARGET_FILE"

@@ -157,7 +157,7 @@ async function refreshTemplatesList() {
     }
     renderTemplatesTable();
   } catch (err) {
-    showToast(_t('error.export_templates', { err: err.message }), true);
+    showToast(_t('file.import_failed', { err: err.message }), true);
   }
 }
 
@@ -288,7 +288,7 @@ async function saveTemplateFromForm(ev) {
 async function deleteSelectedTemplate() {
   const id = templatesState.selectedId;
   if (!id) { showToast(_t('prompt.select_template')); return; }
-  if (!window.confirm(_t('confirm.delete_template'))) { return; }
+  if (!(await showConfirm(_t('confirm.delete_template')))) { return; }
   try {
     await api.deleteTemplate(id);
     templatesState.selectedId = null;
@@ -297,24 +297,6 @@ async function deleteSelectedTemplate() {
     showToast(_t('template.deleted'));
   } catch (err) {
     showToast(_t('error.delete_template', { err: err.message }), true);
-  }
-}
-
-async function exportTemplatesToFile() {
-  try {
-    const mapping = await api.exportTemplates();
-    const content = JSON.stringify(mapping, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'templates-export.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    showToast(_t('error.export_templates', { err: err.message }), true);
   }
 }
 
@@ -414,36 +396,63 @@ function getEventLabel(key) {
 }
 
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  const s = String(value == null ? '' : value);
+  // single pass replace using map for better performance
+  return s.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return ch;
+    }
+  });
+}
+
+function applyModalI18n(modal) {
+  if (!modal) return;
+  // apply data-i18n and data-i18n-attr within modal
+  modal.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n');
+    if (!key) return;
+    const attr = el.getAttribute('data-i18n-attr');
+    try {
+      const v = _t(key);
+      if (attr) el.setAttribute(attr, v);
+      else el.textContent = v;
+    } catch (e) {
+      // noop
+    }
+  });
 }
 
 const api = {
   async request(url, options = {}) {
     // Resolve relative urls like "api/tasks" against API_BASE
     const resolved = /^(https?:)?\/\//.test(url) || url.startsWith('/') ? url : (API_BASE + url.replace(/^\/+/, ''));
+    // merge headers, but allow caller to override
+    const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
     const response = await fetch(resolved, {
-      headers: { "Content-Type": "application/json" },
       ...options,
+      headers,
     });
     const text = await response.text();
-    let payload = {};
+    let payload = null;
     if (text) {
       try {
         payload = JSON.parse(text);
       } catch (err) {
-        console.error("JSON parse error", err);
+        // keep raw text in payload for better diagnostics
+        payload = { _raw: text };
       }
     }
     if (!response.ok) {
-      const error = payload?.error || response.statusText;
-      throw new Error(error);
+      const message = (payload && (payload.error || payload._raw)) || response.statusText || `HTTP ${response.status}`;
+      console.error("API error", { url: resolved, status: response.status, payload });
+      throw new Error(message);
     }
-    return payload;
+    return payload || {};
   },
   listTasks() {
     return this.request("api/tasks");
@@ -589,12 +598,73 @@ function showToast(message, isError = false) {
   }, 2600);
 }
 
+function showConfirm(message, { okText = _t('btn.ok'), cancelText = _t('btn.cancel') } = {}) {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('__confirmModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = '__confirmModal';
+      modal.className = 'modal hidden';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <div><h2></h2></div>
+            <div class="modal-header-actions"><button class="ghost" data-close>&times;</button></div>
+          </div>
+          <div class="modal-body" style="padding:1rem;"></div>
+          <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:0.5rem;padding:1rem;">
+            <button class="ghost" id="__confirmCancel"></button>
+            <button class="primary" id="__confirmOk"></button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      // wire close on overlay
+      modal.addEventListener('click', (ev) => { if (ev.target === modal) { closeModal(modal); resolve(false); } });
+      modal.querySelectorAll('[data-close]').forEach((btn) => btn.addEventListener('click', () => { closeModal(modal); resolve(false); }));
+    }
+    const hdr = modal.querySelector('h2');
+    const body = modal.querySelector('.modal-body');
+    const okBtn = modal.querySelector('#__confirmOk');
+    const cancelBtn = modal.querySelector('#__confirmCancel');
+    if (hdr) hdr.textContent = '';
+    if (body) body.textContent = message || '';
+    if (okBtn) {
+      okBtn.textContent = okText;
+      okBtn.onclick = () => { closeModal(modal); resolve(true); };
+    }
+    if (cancelBtn) {
+      cancelBtn.textContent = cancelText;
+      cancelBtn.onclick = () => { closeModal(modal); resolve(false); };
+    }
+    applyModalI18n(modal);
+    openModal(modal);
+  });
+}
+
 function openModal(modal) {
   modal.classList.remove("hidden");
 }
 
 function closeModal(modal) {
+  if (!modal) return;
   modal.classList.add("hidden");
+  // restore i18n-driven texts for any modal (will reset server file picker as well)
+  try {
+    applyModalI18n(modal);
+    // restore placeholder attributes if present
+    modal.querySelectorAll('[data-i18n-attr]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      const attr = el.getAttribute('data-i18n-attr');
+      if (key && attr) el.setAttribute(attr, _t(key));
+    });
+    // ensure use-local button visible by default
+    const btnUseLocalEl = modal.querySelector('#btnUseLocalFile');
+    if (btnUseLocalEl) btnUseLocalEl.classList.remove('hidden');
+  } catch (e) {
+    // ignore i18n restore errors
+  }
 }
 
 function toggleSections() {
@@ -823,7 +893,7 @@ function openTaskModal(task = null) {
     elements.taskModalTitle.textContent = `${_t('btn.edit')}：${task.name}`;
     elements.taskForm.name.value = task.name;
     elements.triggerTypeSelect.value = task.trigger_type;
-    elements.eventTypeSelect.value = task.event_type || "script";
+    elements.eventTypeSelect.value = task.event_type || "system_shutdown";
     elements.taskForm.is_active.checked = Boolean(task.is_active);
     if (elements.scheduleInput) {
       elements.scheduleInput.value = task.schedule_expression || "";
@@ -833,7 +903,7 @@ function openTaskModal(task = null) {
     elements.taskForm.script_body.value = task.script_body || "";
   } else {
     elements.taskModalTitle.textContent = _t('modal.task.new');
-    elements.eventTypeSelect.value = "script";
+    elements.eventTypeSelect.value = "system_shutdown";
     elements.taskForm.condition_interval.value = 60;
     if (elements.scheduleInput) {
       elements.scheduleInput.value = "";
@@ -1165,7 +1235,7 @@ async function deleteSelectedTasks() {
     showToast(_t('prompt.select_task'));
     return;
   }
-  if (!window.confirm(_t('confirm.delete_selected_tasks', { n: selected.length }))) {
+  if (!(await showConfirm(_t('confirm.delete_selected_tasks', { n: selected.length })))) {
     return;
   }
   try {
@@ -1316,7 +1386,7 @@ function renderResults(results) {
 
 async function clearResultHistory() {
   if (!state.currentResultTaskId) { return; }
-  if (!window.confirm(_t('confirm.clear_results'))) {
+  if (!(await showConfirm(_t('confirm.clear_results')))) {
     return;
   }
   try {
@@ -1480,11 +1550,15 @@ if (editTplBtn) editTplBtn.addEventListener('click', () => {
 const delTplBtn = document.getElementById('btnDeleteTemplate');
 if (delTplBtn) delTplBtn.addEventListener('click', deleteSelectedTemplate);
 const expTplBtn = document.getElementById('btnExportTemplates');
-if (expTplBtn) expTplBtn.addEventListener('click', exportTemplatesToFile);
+if (expTplBtn) expTplBtn.addEventListener('click', async () => {
+  const mapping = await api.exportTemplates();
+  const content = JSON.stringify(mapping, null, 2);
+  // directly open server file picker in save mode (no confirmation)
+  openServerFilePicker('/', { mode: 'save', content });
+});
 const impTplBtn = document.getElementById('btnImportTemplates');
 if (impTplBtn) impTplBtn.addEventListener('click', () => {
-  const fi = document.getElementById('templateImportFile');
-  if (fi) fi.click();
+  openServerFilePicker('/');
 });
 const previewBtn = document.getElementById('btnPreviewTemplate');
 if (previewBtn) previewBtn.addEventListener('click', () => {
@@ -1497,6 +1571,210 @@ if (previewBtn) previewBtn.addEventListener('click', () => {
 const tplForm = document.getElementById('templateForm');
 if (tplForm) tplForm.addEventListener('submit', saveTemplateFromForm);
 bindTemplateImportFile();
+// 服务器文件选择：浏览并读取服务器端文件（依赖后端 api/fs 列表与读取接口）
+function openServerFilePicker(defaultPath = '/', options = {}) {
+  const mode = options.mode || 'open'; // 'open' or 'save'
+  const saveContent = options.content || null;
+  const modal = document.getElementById('serverFilePickerModal');
+  const pathInput = document.getElementById('serverPathInput');
+  const listEl = document.getElementById('serverFileList');
+  if (!modal || !pathInput || !listEl) {
+    // fallback to local file input
+    document.getElementById('templateImportFile')?.click();
+    return;
+  }
+
+  // ensure i18n baseline
+  applyModalI18n(modal);
+
+  // prepare UI for mode
+  const headerTitleEl = modal.querySelector('h2');
+  const subtitleEl = modal.querySelector('.subtitle');
+  const btnSelectEl = modal.querySelector('#btnSelectServerFile');
+  const btnUseLocalEl = modal.querySelector('#btnUseLocalFile');
+
+  if (mode === 'save') {
+    if (headerTitleEl) headerTitleEl.textContent = _t('file.export_to_server_title');
+    if (subtitleEl) subtitleEl.textContent = _t('file.export_to_server_subtitle');
+    if (btnSelectEl) btnSelectEl.textContent = _t('filepicker.export_selected');
+    if (btnUseLocalEl) btnUseLocalEl.textContent = _t('filepicker.export_to_local');
+  }
+
+  // normalize path helper
+  const normalizePath = (p) => {
+    let s = String(p || '/').replace(/\\/g, '/').trim();
+    if (!s) s = '/';
+    if (s.length > 1) s = s.replace(/\/\/+$/g, '');
+    return s;
+  };
+
+  pathInput.value = normalizePath(defaultPath);
+  listEl.innerHTML = '<div class="muted">' + _t('loading') + '</div>';
+
+  const btnRefresh = modal.querySelector('#btnServerRefresh');
+  if (btnRefresh) btnRefresh.onclick = () => fetchServerFiles(normalizePath(pathInput.value));
+
+  if (btnUseLocalEl) {
+    btnUseLocalEl.onclick = () => {
+      if (mode === 'save') {
+        try {
+          const filename = 'templates-export.json';
+          const blob = new Blob([saveContent || ''], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showToast(_t('file.save_local_result'));
+          closeModal(modal);
+        } catch (e) {
+          showToast(_t('file.save_failed', { err: e && e.message }), true);
+        }
+      } else {
+        document.getElementById('templateImportFile')?.click();
+      }
+    };
+  }
+
+  if (btnSelectEl) {
+    btnSelectEl.onclick = async () => {
+      const sel = listEl.querySelector('.selected');
+      let fp = sel?.dataset?.path || '';
+      if (!fp && mode === 'save') {
+        fp = normalizePath(pathInput.value);
+      }
+      if (!fp) { showToast(_t('prompt.select_file')); return; }
+      try {
+        showToast(_t('loading'));
+        if (mode === 'save') {
+          const isDir = sel ? sel.dataset.isdir === 'true' : true;
+          let targetPath = fp;
+          if (isDir) {
+            const defaultName = 'templates-export.json';
+            targetPath = (fp === '/') ? ('/' + defaultName) : (fp.replace(/\/\/+$/g, '') + '/' + defaultName);
+          }
+          const resp = await api.request('api/fs/write/' + encodeURIComponent(targetPath), { method: 'POST', body: JSON.stringify({ content: saveContent }), headers: { 'Content-Type': 'application/json', 'X-FS-Path': targetPath } });
+          showToast(_t('file.save_result', { path: resp.path || targetPath }));
+          closeModal(modal);
+          return;
+        }
+        // read and import
+        const payload = await api.request('api/fs/read/' + encodeURIComponent(fp), { headers: { 'X-FS-Path': fp } });
+        let obj = null;
+        if (payload && Object.prototype.hasOwnProperty.call(payload, '_raw')) {
+          try { obj = JSON.parse(payload._raw); } catch (e) { throw new Error(_t('file.invalid_format')); }
+        } else if (payload && typeof payload === 'object') {
+          obj = payload;
+        } else {
+          throw new Error(_t('file.invalid_format'));
+        }
+        const result = await api.importTemplates(obj);
+        showToast(_t('file.import_result', { inserted: result?.imported?.inserted || 0, updated: result?.imported?.updated || 0 }));
+        closeModal(modal);
+        refreshTemplatesList();
+        await loadTemplates();
+      } catch (err) {
+        showToast(_t('file.import_failed', { err: err.message }), true);
+      }
+    };
+  }
+
+  // file list click handling (delegated)
+  listEl.onclick = (ev) => {
+    const row = ev.target.closest('.srv-file');
+    if (!row) return;
+    const isDir = row.dataset.isdir === 'true';
+    const path = row.dataset.path;
+    if (isDir) {
+      pathInput.value = normalizePath(path);
+      fetchServerFiles(pathInput.value);
+      return;
+    }
+    listEl.querySelectorAll('.srv-file').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+  };
+
+  // double click behavior
+  listEl.ondblclick = (ev) => {
+    const row = ev.target.closest('.srv-file');
+    if (!row) return;
+    const isDir = row.dataset.isdir === 'true';
+    if (isDir) {
+      const newPath = normalizePath(row.dataset.path);
+      pathInput.value = newPath;
+      fetchServerFiles(newPath);
+    } else {
+      modal.querySelector('#btnSelectServerFile')?.click();
+    }
+  };
+
+  openModal(modal);
+  fetchServerFiles(pathInput.value);
+}
+
+async function fetchServerFiles(path) {
+  const listEl = document.getElementById('serverFileList');
+  if (!listEl) return;
+  const normalizePath = (p) => {
+    let s = String(p || '/').replace(/\\/g, '/').trim();
+    if (!s) s = '/';
+    if (s.length > 1) s = s.replace(/\/\/+$/g, '');
+    return s;
+  };
+  const p = normalizePath(path);
+  listEl.innerHTML = '<div class="muted">' + _t('loading') + '</div>';
+  try {
+    const payload = await api.request('api/fs/list/' + encodeURIComponent(p), { headers: { 'X-FS-Path': p } });
+    const files = payload && Array.isArray(payload.files) ? payload.files : [];
+    renderServerFileList(files, p);
+  } catch (err) {
+    listEl.innerHTML = '<div class="muted">' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
+  }
+}
+
+function renderServerFileList(files, parentPath) {
+  const listEl = document.getElementById('serverFileList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  if (!files || !files.length) {
+    listEl.innerHTML = '<div class="muted">' + _t('empty.no_files') + '</div>';
+    return;
+  }
+  try {
+    const normalize = (p) => String(p || '/').replace(/\\/g, '/').replace(/\/\/+$/g, '') || '/';
+    const base = normalize(parentPath);
+    const frag = document.createDocumentFragment();
+    if (base !== '/') {
+      const up = document.createElement('div');
+      up.className = 'srv-file srv-dir';
+      up.dataset.path = (function () {
+        const p = base.replace(/\/\/+$/g, '');
+        const idx = p.lastIndexOf('/');
+        if (idx <= 0) return '/';
+        return p.slice(0, idx) || '/';
+      })();
+      up.dataset.isdir = 'true';
+      up.innerHTML = `<span class="srv-icon">⬆️</span><span class="srv-name">..</span>`;
+      frag.appendChild(up);
+    }
+    files.forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'srv-file' + (f.isdir ? ' srv-dir' : ' srv-file-item');
+      const path = f.path || (base === '/' ? '/' + (f.name || '') : base + '/' + (f.name || ''));
+      row.dataset.path = path;
+      row.dataset.isdir = f.isdir ? 'true' : 'false';
+      const icon = f.isdir ? '📁' : '📄';
+      row.innerHTML = `<span class="srv-icon">${icon}</span><span class="srv-name">${escapeHtml(f.name || '')}</span>`;
+      frag.appendChild(row);
+    });
+    listEl.appendChild(frag);
+  } catch (e) {
+    listEl.innerHTML = '<div class="muted">' + escapeHtml(e && e.message ? e.message : String(e)) + '</div>';
+  }
+}
 // update buttons state periodically
 setInterval(() => {
   const editBtn = document.getElementById('btnEditTemplate');

@@ -27,7 +27,7 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX systems
     grp = None  # type: ignore
     pwd = None  # type: ignore
-from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit, unquote
 
 ###############################################################################
 # Helpers and configuration
@@ -1177,6 +1177,10 @@ class SchedulerRequestHandler(BaseHTTPRequestHandler):
             if resource == "templates":
                 self._handle_templates(method, segments[1:])
                 return
+            if resource == "fs":
+                # server-side filesystem browsing and reading
+                self._handle_fs(method, segments[1:])
+                return
             if resource == "tasks":
                 self._handle_tasks(method, segments[1:])
                 return
@@ -1296,7 +1300,19 @@ class SchedulerRequestHandler(BaseHTTPRequestHandler):
                 return
             # 支持直接上传 mapping 对象
             if not isinstance(payload, dict):
-                raise ValueError("import data should be an object mapping")
+                self._json_response({"error": "import data should be an object mapping"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            invalid_keys = []
+            for k, v in payload.items():
+                if not isinstance(v, dict):
+                    invalid_keys.append(k)
+                    continue
+                # 必须包含 script_body 字段且为字符串
+                if not isinstance(v.get("script_body"), str) or not v.get("script_body"):
+                    invalid_keys.append(k)
+            if invalid_keys:
+                self._json_response({"error": "invalid template entries", "invalid_keys": invalid_keys}, status=HTTPStatus.BAD_REQUEST)
+                return
             summary = ctx.db.import_templates(payload)
             self._json_response({"imported": summary})
             return
@@ -1435,6 +1451,154 @@ class SchedulerRequestHandler(BaseHTTPRequestHandler):
         offset = int(query.get("offset", [0])[0])
         results = ctx.db.fetch_results(task_id, limit=limit, offset=offset)
         self._json_response({"data": results})
+
+    def _handle_fs(self, method: str, remainder: List[str]) -> None:
+        # Support: GET /api/fs/list?path=... , GET /api/fs/read?path=... and POST /api/fs/write?path=...
+        # determine action from path segment first so we can allow POST for 'write'
+        action = remainder[0] if remainder else "list"
+        if action == 'write' and method != 'POST':
+            self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+            return
+        if action in ('list', 'read') and method != 'GET':
+            self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
+            return
+        query = parse_qs(urlparse(self.path).query)
+        query_path = query.get("path", [None])[0]
+        header_path = None
+        try:
+            header_path = self.headers.get('X-FS-Path')
+        except Exception:
+            header_path = None
+        # prefer explicit header (proxy-friendly), then query, else try path-in-segment, finally default '/'
+        path = header_path if header_path is not None else (query_path if query_path is not None else None)
+        if path is None:
+            # check if client encoded the desired path as the next path segment: /api/fs/list/%2Ftmp
+            try:
+                if remainder and len(remainder) > 1:
+                    seg = remainder[1]
+                    if seg:
+                        path = unquote(seg)
+            except Exception:
+                path = None
+        if path is None:
+            path = '/'
+        # normalize input path
+        try:
+            # allow absolute paths; otherwise treat relative to server root
+            if not path:
+                path = "/"
+            if not os.path.isabs(path):
+                target = os.path.normpath(os.path.join(ROOT_DIR, path))
+            else:
+                target = os.path.normpath(path)
+        except Exception:
+            self._json_response({"error": "invalid path"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        # Log incoming request path, parsed query/header path and resolved filesystem target
+        try:
+            logger.info("_handle_fs request: raw_path=%s, query_path=%s, header_path=%s, resolved_target=%s", self.path, query_path, header_path, target)
+        except Exception:
+            pass
+
+        if action == "list":
+            self._list_fs(target)
+            return
+        if action == "read":
+            self._read_fs(target)
+            return
+        if action == "write":
+            self._write_fs(target)
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _list_fs(self, target: str) -> None:
+        # Return JSON listing for directory
+        if not os.path.exists(target):
+            self.send_error(HTTPStatus.NOT_FOUND, "Path not found")
+            return
+        if not os.path.isdir(target):
+            self.send_error(HTTPStatus.BAD_REQUEST, "Not a directory")
+            return
+        try:
+            entries = []
+            with os.scandir(target) as it:
+                for entry in sorted(it, key=lambda e: (not e.is_dir(), e.name.lower())):
+                    entries.append({
+                        "name": entry.name,
+                        "path": os.path.join(target, entry.name),
+                        "isdir": entry.is_dir(),
+                    })
+            self._json_response({"files": entries})
+        except PermissionError:
+            self._json_response({"error": "permission denied"}, status=HTTPStatus.FORBIDDEN)
+        except Exception as exc:
+            logger.exception("_list_fs error: %s", exc)
+            self._json_response({"error": "internal error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _read_fs(self, target: str) -> None:
+        # Return file content as plain text
+        if not os.path.exists(target):
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return
+        if not os.path.isfile(target):
+            self.send_error(HTTPStatus.BAD_REQUEST, "Not a file")
+            return
+        try:
+            # attempt to read as text
+            with open(target, "rb") as fh:
+                data = fh.read()
+            # Try to decode as UTF-8, fall back to latin-1 to avoid decode errors
+            try:
+                text = data.decode("utf-8")
+            except Exception:
+                text = data.decode("latin-1")
+            body = text.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except PermissionError:
+            self.send_error(HTTPStatus.FORBIDDEN, "Permission denied")
+        except Exception as exc:
+            logger.exception("_read_fs error: %s", exc)
+            self._json_response({"error": "internal error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _write_fs(self, target: str) -> None:
+        # Write provided content (JSON body {"content": "..."}) to target path
+        try:
+            payload = self._read_json()
+            if payload is None:
+                return
+            if not isinstance(payload, dict) or 'content' not in payload:
+                self._json_response({"error": "missing content"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            content = payload.get('content', '')
+            if not isinstance(content, str):
+                self._json_response({"error": "content must be a string"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            parent = os.path.dirname(target) or '/'
+            # Ensure parent directory exists (try to create)
+            if not os.path.exists(parent):
+                try:
+                    os.makedirs(parent, exist_ok=True)
+                except Exception:
+                    self._json_response({"error": "parent directory missing and cannot be created"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+            # write file (utf-8)
+            try:
+                with open(target, 'wb') as fh:
+                    fh.write(content.encode('utf-8'))
+                self._json_response({"written": True, "path": target})
+            except PermissionError:
+                self._json_response({"error": "permission denied"}, status=HTTPStatus.FORBIDDEN)
+            except Exception as exc:
+                logger.exception("_write_fs error: %s", exc)
+                self._json_response({"error": "internal error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        except Exception as exc:
+            logger.exception("_write_fs top-level error: %s", exc)
+            self._json_response({"error": "internal error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _health(self) -> None:
         ctx: SchedulerContext = self.server.app_context  # type: ignore[attr-defined]
