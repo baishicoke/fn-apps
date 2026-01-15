@@ -2,6 +2,8 @@
 
 ### This script is called after the user uninstalls the application.
 
+KVER="$(uname -r)"
+
 # Restore the original mount.ntfs symlink to ntfs-3g
 rm -f /usr/sbin/mount.ntfs && ln -sf "mount.ntfs-3g" "/usr/sbin/mount.ntfs"
 
