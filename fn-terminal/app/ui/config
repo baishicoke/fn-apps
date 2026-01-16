@@ -1,17 +1,16 @@
 {
-    ".url": {
-        "fn-terminal.Application": {
-            "title": "terminal",
-            "icon": "images/icon_{0}.png",
-            "type": "iframe",
-            "protocol": "http",
-            "port": "17681",
-            "url": "/",
-            "allUsers": false,
-            "control": {
-                "accessPerm": "readonly",
-                "fullUrlPerm":"readonly"
-            }
-        }
+  ".url": {
+    "fn-terminal.Application": {
+      "title": "terminal",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "port": "${wizard_port}",
+      "url": "${wizard_base_path}",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly",
+        "fullUrlPerm": "readonly"
+      }
     }
+  }
 }
