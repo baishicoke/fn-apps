@@ -1,0 +1,18 @@
+{
+  ".url": {
+    "fn-kodi.Application": {
+      "title": "Kodi 控制",
+      "desc": "Kodi 控制",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "8080",
+      "url": "/",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly",
+        "fullUrlPerm": "readonly"
+      }
+    }
+  }
+}

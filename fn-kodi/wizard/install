@@ -1,27 +1,35 @@
 [
-    {
-        "stepTitle": "安装向导",
-        "items": [
-            {
-                "type": "tips",
-                "helpText": "Kodi 应用的安装向导，用于设置应用的 UPnP/DLNA 及 AirPlay 支持。"
-            },
-            {
-                "type": "radio",
-                "field": "wizard_airplay_support",
-                "label": "是否需要支持 UPnP/DLNA 及 AirPlay",
-                "initValue": "bridge",
-                "options": [
-                    {
-                        "label": "是",
-                        "value": "host"
-                    },
-                    {
-                        "label": "否",
-                        "value": "bridge"
-                    }
-                ]
-            }
+  {
+    "stepTitle": "安装向导",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "欢迎使用我们的应用！"
+      },
+      {
+        "type": "tips",
+        "helpText": "1. Kodi web 界面的默认用户名和密码为 <strong>kodi:kodi</strong>，请在首次登录后前往设置页面修改。"
+      },
+      {
+        "type": "tips",
+        "helpText": "2. 遥控器：<br/>  * Cast Kodi（浏览器扩展）<br/>  * Kore（Android 应用）<br/>  * SYBU for Kodi（iOS 应用）<br/>"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_airplay_support",
+        "label": "是否需要支持 UPnP/DLNA 及 AirPlay",
+        "initValue": "bridge",
+        "options": [
+          {
+            "label": "是",
+            "value": "host"
+          },
+          {
+            "label": "否",
+            "value": "bridge"
+          }
         ]
-    }
+      }
+    ]
+  }
 ]

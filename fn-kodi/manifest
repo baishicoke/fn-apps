@@ -1,9 +1,11 @@
 appname               = fn-kodi
-version               = 1.0.1
+version               = 1.0.2
 display_name          = kodi
 desc                  = Kodi 是一个免费且开源的媒体播放器软件，用于播放视频、音频和图像。
 platform              = x86
 source                = thirdparty
+desktop_uidir         = ui
+desktop_applaunchname = fn-kodi.Application
 maintainer            = Ing
 maintainer_url        = https://github.com/RROrg
 distributor           = RROrg
