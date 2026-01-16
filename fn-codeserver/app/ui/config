@@ -4,8 +4,7 @@
             "title": "codeserver",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
-            "protocol": "http",
-            "port": "38356",
+            "port": "${wizard_port}",
             "url": "/",
             "allUsers": false,
             "control": {

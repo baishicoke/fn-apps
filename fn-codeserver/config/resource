@@ -1,14 +1,14 @@
 {
-    "data-share": {
-        "shares": [
-            {
-                "name": "fn-codeserver",
-                "permission": {
-                    "rw": [
-                        "fn-codeserver"
-                    ]
-                }
-            }
-        ]
-    }
+  "data-share": {
+    "shares": [
+      {
+        "name": "fn-codeserver",
+        "permission": {
+          "rw": [
+            "fn-codeserver"
+          ]
+        }
+      }
+    ]
+  }
 }

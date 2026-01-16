@@ -1,5 +1,5 @@
 appname               = fn-codeserver
-version               = 1.0.2
+version               = 1.0.3
 display_name          = code-server
 desc                  = code-server 是 VS Code 的在线版本，允许您通过浏览器进行代码编辑和开发。
 platform              = all
@@ -12,5 +12,3 @@ distributor           = RROrg
 distributor_url       = https://github.com/RROrg/fn-apps
 install_type          = root
 reloadui              = yes
-service_port          = 38356
-checkport             = true

@@ -5,13 +5,13 @@
 export HOME="${TRIM_PKGVAR}"
 curl -fsSL https://code-server.dev/install.sh | sh -s -- --method standalone --prefix "${TRIM_APPDEST}/server"
 [ $? -ne 0 ] && {
-  echo "install code-server failed"
+  echo "code-server install failed" >$TRIM_TEMP_LOGFILE 2>&1
   exit 1
 }
 
 FILE=$(find ${TRIM_APPDEST}/server/lib/ -name product.json | head -1)
 [ -z "${FILE}" ] && {
-  echo "product.json not found"
+  echo "product.json not found" >$TRIM_TEMP_LOGFILE 2>&1
   exit 1
 }
 
@@ -46,12 +46,5 @@ jq '
     . + {extensionsGallery: gallery}
   end
 ' "$FILE" >"$FILE.tmp" && mv "$FILE.tmp" "$FILE"
-
-# Update configuration based on wizard inputs
-sed -i "s|\"protocol\":.*,$|\"protocol\": \"${wizard_protocol:-http}\",|g" ${TRIM_APPDEST}/ui/config
-sed -i "s|\"port\":.*,$|\"port\": \"${wizard_port:-38356}\",|g" ${TRIM_APPDEST}/ui/config
-sed -i "s|\"url\":.*,$|\"url\": \"${wizard_base_path:-/}\",|g" ${TRIM_APPDEST}/ui/config
-
-psql -U postgres -d appcenter -c "UPDATE app_service SET url='${wizard_protocol:-http}://\${host}:${wizard_port:-38356}${wizard_base_path:-/}', default_url='${wizard_protocol:-http}://\${host}:${wizard_port:-38356}${wizard_base_path:-/}' WHERE service_name LIKE '${TRIM_APPNAME}.%';"
 
 exit 0
