@@ -1,19 +1,19 @@
 [
-    {
-        "stepTitle": "安装向导",
-        "items": [
-            {
-                "type": "tips",
-                "helpText": "<strong>警告：</strong>"
-            },
-            {
-                "type": "tips",
-                "helpText": "  1. 由于默认的 ntfs-3g 驱动已加载，重启系统后使用 ntfs3 驱动。"
-            },
-            {
-                "type": "tips",
-                "helpText": "  2. 内核升级后需重新安装本驱动。"
-            }
-        ]
-    }
+  {
+    "stepTitle": "安装向导",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "欢迎使用我们的应用！"
+      },
+      {
+        "type": "tips",
+        "helpText": "<strong>警告：</strong>"
+      },
+      {
+        "type": "tips",
+        "helpText": "1. 由于默认的 ntfs-3g 驱动已加载，重启系统后使用 ntfs3 驱动。<br/>2. 内核升级后需重新安装本驱动。"
+      }
+    ]
+  }
 ]
