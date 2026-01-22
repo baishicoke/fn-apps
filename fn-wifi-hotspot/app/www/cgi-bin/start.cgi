@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034
 set -eu
 . "$(dirname "$0")/common.sh"
 
@@ -36,7 +37,6 @@ fi
 parent_iface="$IFACE"
 hotspot_iface="$IFACE"
 virtual_iface=""
-notice=""
 
 sta_prev_con=""
 if command -v nmcli >/dev/null 2>&1; then
@@ -48,16 +48,8 @@ if iw_supports_sta_ap; then
   virtual_iface="$(mk_ap_iface_name "$IFACE")"
   if ensure_virtual_ap_iface "$IFACE" "$virtual_iface"; then
     hotspot_iface="$virtual_iface"
-    notice="Using virtual AP iface '$hotspot_iface' (STA on '$IFACE' kept)."
   else
     virtual_iface=""
-    notice="Driver reports STA+AP support, but failed to create virtual AP iface; will disconnect STA and use '$IFACE'."
-  fi
-else
-  if [ -n "${sta_prev_con:-}" ]; then
-    notice="Adapter does not support STA+AP; disconnected '$sta_prev_con' on '$IFACE'."
-  else
-    notice="Adapter does not support STA+AP; hotspot will use '$IFACE' (may interrupt Wi-Fi)."
   fi
 fi
 
@@ -142,4 +134,4 @@ apply_allow_ports "$hotspot_iface" "${ALLOW_PORTS:-}"
 # Persist enabled state so we can restore after reboot.
 write_hotspot_state 1
 
-http_ok_output "$out" "${notice:-}"
+http_ok_output "$out"

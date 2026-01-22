@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034
 set -eu
 
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
@@ -575,6 +576,9 @@ localize_msg() {
   # Best-effort mapping for validation-style errors.
   # Keep unknown parts (e.g. regdom details) as-is.
   printf '%s' "$msg" | sed \
+    -e "s/^Warning: Country Code is (00); 5.0GHz channels may not be enabled\.$/监管域为 00；5.0GHz 信道可能不可用。/" \
+    -e "s/^Warning: Adapter does not support STA\+AP; disconnected '\([^']*\)' on '\([^']*\)'\.$/网卡不支持 STA+AP，已断开 '\1' 在 '\2'。/" \
+    -e "s/^Warning: Adapter does not support STA\+AP; hotspot will use '\([^']*\)' (may interrupt Wi‑Fi)\.$/网卡不支持 STA+AP；热点将使用 '\1'（可能中断 Wi‑Fi）。/" \
     -e "s/^Using virtual AP iface '\([^']*\)' (STA on '\([^']*\)' kept)\.$/使用虚拟 AP 接口 '\1'（保留 '\2' 的 STA 连接）。/" \
     -e "s/^Driver reports STA[+]AP support, but failed to create virtual AP iface; will disconnect STA and use '\([^']*\)'\.$/驱动报告支持 STA+AP，但创建虚拟 AP 接口失败；将断开 STA 并使用 '\1'。/" \
     -e "s/^Adapter does not support STA[+]AP; disconnected '\([^']*\)' on '\([^']*\)'\.$/网卡不支持 STA+AP，已断开 '\2' 上的 '\1'。/" \
@@ -602,6 +606,8 @@ localize_msg() {
     -e 's/^Connection name conflict: /连接名冲突：/' \
     -e "s/^Device '\(.*\)' does not appear to support AP\/hotspot mode .*$/设备 '\1' 似乎不支持 AP\/热点模式（iw list 未发现 '* AP'）。请更换无线网卡。/" \
     -e 's/^uplinkIface cannot be the same as hotspot iface /uplinkIface 不能与热点网卡相同：/' \
+    -e "s/^uplinkIface cannot be the same as hotspot iface .*unless STA\+AP concurrent mode is available\.$/uplinkIface 不能与热点网卡相同（除非支持 STA+AP 并发模式）。/" \
+    -e "s/^curl failed on dev \(.*\)$/curl 检查互联网连接失败（设备：\1）。/" \
     -e 's/^Tips:$/建议：/' \
     -e 's/hotspot may not be allowed/可能不允许开启热点/g' \
     -e 's/Try band bg (2\.4G) or pick another 5G channel/建议改用 bg (2.4G) 或选择其他 5G 信道/g' \
@@ -622,6 +628,8 @@ localize_msg() {
     -e 's/^password:/password：/' \
     -e 's/^allowPorts:/allowPorts：/' \
     -e 's/^country:/country：/' \
+    -e "s/^system does not support setting country code\.$/系统不支持设置国家码。/" \
+    -e "s/^unexpected error (\(.*\))$/意外错误：\1/" \
     -e 's/is disabled/已被禁用/g' \
     -e "s/is marked 'no IR'/标记为 'no IR'/g"
 }
@@ -637,6 +645,7 @@ cgi_install_trap() {
   # Best-effort safety net: if a CGI exits non-zero before sending headers,
   # respond with a JSON 500 instead of letting the web server generate HTML.
   # Call this early in each .cgi (after sourcing common.sh).
+  # shellcheck disable=SC2154
   trap 'rc=$?; if [ "$rc" -ne 0 ]; then if [ "${HTTP_SENT:-0}" -ne 1 ]; then http_err "500 Internal Server Error" "unexpected error (rc=$rc, step=${STEP:-unknown})"; else exit 0; fi; fi' EXIT
 }
 
@@ -918,7 +927,7 @@ iw_channels_for_band() {
       m = index($0, "]")
       if (n && m && m > n) {
         ch = substr($0, n+1, m-n-1)
-        state = ($0 ~ /disabled/) ? "disabled" : "supported"
+        state = ($0 ~ /disabled/) || ($0 ~ /no IR/) ? "disabled" : "supported"
         print ch ":" freq ":" state
       }
     }
@@ -933,7 +942,7 @@ iw_channels_for_band() {
       m = index($0, "]")
       if (n && m && m > n) {
         ch = substr($0, n+1, m-n-1)
-        state = ($0 ~ /disabled/) ? "disabled" : "disabled"
+        state = ($0 ~ /disabled/) || ($0 ~ /no IR/) ? "disabled" : "disabled"
         print ch ":" freq ":" state
       }
     }
@@ -1001,7 +1010,7 @@ load_cfg() {
 
 save_cfg() {
   umask 077
-  if cat >"$CFG_FILE" <<EOF; then
+  cat >"$CFG_FILE" <<EOF
 IFACE=$(printf '%s' "$IFACE")
 UPLINK_IFACE=$(printf '%s' "$UPLINK_IFACE")
 IP_CIDR=$(printf '%s' "$IP_CIDR")
@@ -1013,9 +1022,7 @@ BAND=$(printf '%s' "$BAND")
 CHANNEL=$(printf '%s' "$CHANNEL")
 CHANNEL_WIDTH=$(printf '%s' "$CHANNEL_WIDTH")
 EOF
-    return 0
-  fi
-  return 1
+  return $?
 }
 
 validate_runtime_channel() {
@@ -1027,26 +1034,14 @@ validate_runtime_channel() {
   [ -n "${ch_line:-}" ] || return 0
 
   case "$ch_line" in
-    *"(disabled)"*)
+    *"disabled"*)
       cc="$(iw_reg_country)"
-      [ -n "${cc:-}" ] || cc="unknown"
-      conf_cc="$(normalize_country "${COUNTRY:-}")"
-      if [ -n "${conf_cc:-}" ]; then
-        CFG_ERR="channel: $CHANNEL is disabled (regdom=$cc, configured country=$conf_cc)"
-      else
-        CFG_ERR="channel: $CHANNEL is disabled (regdom=$cc)"
-      fi
+      CFG_ERR="channel: $1 is disabled (regdom=$cc)"
       return 1
       ;;
-    *"(no IR)"*)
+    *"no IR"*)
       cc="$(iw_reg_country)"
-      [ -n "${cc:-}" ] || cc="unknown"
-      conf_cc="$(normalize_country "${COUNTRY:-}")"
-      if [ -n "${conf_cc:-}" ]; then
-        CFG_ERR="channel: $CHANNEL is marked 'no IR' (regdom=$cc, configured country=$conf_cc), hotspot may not be allowed. Try band bg (2.4G) or pick another 5G channel. If regdom stays 00 or differs from configured country, your driver/kernel may be self-managed and ignoring 'iw reg set'."
-      else
-        CFG_ERR="channel: $CHANNEL is marked 'no IR' (regdom=$cc), hotspot may not be allowed. Try band bg (2.4G) or set regulatory domain (e.g. iw reg set <CC>)."
-      fi
+      CFG_ERR="channel: $1 is marked 'no IR' (regdom=$cc), hotspot may not be allowed. Try band bg (2.4G) or set regulatory domain (e.g. iw reg set <CC>)."
       return 1
       ;;
   esac

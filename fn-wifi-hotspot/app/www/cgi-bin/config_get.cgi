@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034
 set -eu
 . "$(dirname "$0")/common.sh"
 
@@ -8,16 +9,20 @@ cgi_install_trap
 load_cfg
 # If caller provided a countryCode via query string, try to temporarily apply it
 # to fetch channel options for that regulatory domain without persisting change.
-req_cc="$(form_get countryCode "${QUERY_STRING:-}")"
 orig_regdom="$(iw_reg_country)"
+req_cc="$(form_get countryCode "${QUERY_STRING:-}")"
 if [ -n "${req_cc:-}" ]; then
   # Try to set requested regdom; ignore failures and fall back to current regdom.
   iw reg set "${req_cc}" >/dev/null 2>&1 || true
 fi
 
-regdom="$(iw_reg_country)"
 ch_bg="$(iw_channels_for_band bg || true)"
 ch_a="$(iw_channels_for_band a || true)"
+
+regdom="$(iw_reg_country)"
+if [ -n "${req_cc:-}" ] && [ "${req_cc:-}" != "${regdom:-00}" ]; then
+  http_err "400 Bad Request" "system does not support setting country code."
+fi
 
 # Restore original regdom if we temporarily changed it
 if [ -n "${req_cc:-}" ] && [ "${regdom:-}" != "${orig_regdom:-}" ]; then

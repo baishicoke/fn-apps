@@ -69,8 +69,8 @@ const I18N = {
     "lang.zh": "中文",
     "lang.en": "English",
     "theme.system": "跟随系统",
-    "theme.light": "浅色",
-    "theme.dark": "深色",
+    "theme.light": "亮模式",
+    "theme.dark": "暗模式",
 
     "clients.empty": "暂无客户端",
     "clients.cols": ["主机名", "MAC", "IP", "信号", "在线", "流量", "操作"],
@@ -382,6 +382,20 @@ function closeModal() {
     activeModalCleanup = null;
     try { fn(); } catch { /* ignore */ }
   }
+
+  // If a descendant currently has focus, move focus away before hiding the modal
+  try {
+    const active = document.activeElement;
+    if (active && modal.contains(active)) {
+      // Try to focus a neutral element to avoid aria-hidden on a focused descendant.
+      if (typeof document.documentElement.focus === "function") {
+        document.documentElement.focus();
+      } else if (typeof active.blur === "function") {
+        active.blur();
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   modal.classList.remove("show");
   modal.setAttribute("aria-hidden", "true");
   if (actions) actions.style.display = "";
@@ -429,8 +443,11 @@ function modalOpen({
     const finish = (val) => {
       if (done) return;
       done = true;
+      // Restore previous focus before hiding the modal to avoid hiding a focused descendant.
+      try {
+        if (prevActive && typeof prevActive.focus === "function") prevActive.focus();
+      } catch (e) { /* ignore */ }
       closeModal();
-      if (prevActive && typeof prevActive.focus === "function") prevActive.focus();
       resolve(val);
     };
 
@@ -568,10 +585,9 @@ function updateBandAvailability() {
 
 // Fetch channel options from server for a specific country and apply them.
 async function fetchAndApplyChannelOptions(countryCode, { forceDefaultIfInvalid = false } = {}) {
-  if (!countryCode) countryCode = "CN";
   try {
-    // Request server config with country override so backend can return proper channelOptions
-    const url = cgiUrl("config_get.cgi") + `&countryCode=${encodeURIComponent(countryCode)}`;
+    // Request server config with optional country override so backend can return proper channelOptions
+    const url = cgiUrl("config_get.cgi") + (countryCode ? `&countryCode=${encodeURIComponent(countryCode)}` : "");
     const cfg = await getJSON(url);
     if (cfg && cfg.channelOptions && typeof cfg.channelOptions === "object") {
       serverChannelMeta = { bg: {}, a: {} };
@@ -591,6 +607,11 @@ async function fetchAndApplyChannelOptions(countryCode, { forceDefaultIfInvalid 
       markDirty();
     }
   } catch (e) {
+    // Clear the countryCode UI when applying the requested country code failed
+    if (countryCodeEl) {
+      try { countryCodeEl.value = ""; } catch (_) { /* ignore */ }
+    }
+
     const msg = t("msg.countryChangeFailed", { err: e.message || String(e) });
     try { internalAlert(msg).catch(() => { /* ignore */ }); } catch (_) { setMsg(msg); }
   }
@@ -658,7 +679,7 @@ if (bandEl && channelEl) {
 // When country code changes, fetch updated regulatory channel options and refresh selects.
 if (countryCodeEl) {
   countryCodeEl.addEventListener("change", () => {
-    const cc = (countryCodeEl.value || "CN").toString();
+    const cc = (countryCodeEl.value || "").toString();
     // Fetch channel options for the chosen country and update UI accordingly.
     fetchAndApplyChannelOptions(cc, { forceDefaultIfInvalid: true }).catch((e) => {
       setMsg(e.message);
@@ -863,7 +884,7 @@ function readForm() {
     allowPorts: (fd.get("allowPorts") || "").toString().trim(),
     ssid: (fd.get("ssid") || "").toString().trim(),
     password: (fd.get("password") || "").toString(),
-    countryCode: (fd.get("countryCode") || "CN").toString(),
+    countryCode: (fd.get("countryCode") || "").toString(),
     band: (fd.get("band") || "bg").toString(),
     channel: (fd.get("channel") || "6").toString(),
     channelWidth: (fd.get("channelWidth") || "20").toString()
@@ -1047,22 +1068,35 @@ if (toggleBtn) {
         setMsg(t("msg.disabled"));
       } else {
         // If STA+AP concurrent mode is not supported, starting hotspot will disconnect current Wi-Fi.
-        const stPre = await getJSON(cgiUrl("status.cgi"));
-        const willDisc = !!(stPre && stPre.status && stPre.status.willDisconnectSta === true);
-        const apConc = !!(stPre && stPre.status && stPre.status.staApConcurrent === true);
-        if (!apConc && willDisc) {
-          const parentCon = (stPre && stPre.status && stPre.status.parentActiveConnection) ? String(stPre.status.parentActiveConnection) : "";
-          const conPart = parentCon ? (currentLang === "zh" ? `（${parentCon}）` : ` (${parentCon})`) : "";
-          const ok = await internalConfirm(t("hotspot.confirmMsg", { conPart }), {
-            title: t("hotspot.confirmTitle"),
-            okText: t("hotspot.confirmOk"),
-            cancelText: t("hotspot.confirmCancel"),
-          });
-          if (!ok) {
-            setMsg(t("msg.canceled"));
+        try {
+          // Let backend perform pre-start checks and surface any warnings/errors.
+          const stpre = await getJSON(cgiUrl("stpre.cgi"));
+
+          const warnings = [];
+          if (stpre && Array.isArray(stpre.warnings)) {
+            warnings.push(...stpre.warnings.map(String));
+          }
+
+          // If backend requests abort, stop start flow and show message.
+          if (stpre && stpre.abort) {
+            setMsg(stpre.error || t("msg.canceled"));
             return;
           }
-        }
+
+          // If there are warnings, ask user to confirm before proceeding.
+          if (warnings.length > 0) {
+            const warnMsg = warnings.join("\n");
+            const ok = await internalConfirm(warnMsg, {
+              title: t("hotspot.confirmTitle"),
+              okText: t("hotspot.confirmOk"),
+              cancelText: t("hotspot.confirmCancel"),
+            });
+            if (!ok) {
+              setMsg(t("msg.canceled"));
+              return;
+            }
+          }
+        } catch (_) { /* ignore */ }
         const closeProg = internalProgress(t("progress.enable"));
         await getJSON(cgiUrl("start.cgi"));
         closeProg();
