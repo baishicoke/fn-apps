@@ -18,8 +18,11 @@
       <a href="https://github.com/RROrg/fn-apps" target="_blank" rel="noopener" id="githubLink"
         class="muted github-link" data-i18n="app.github">GitHub</a>
       <div class="theme-toggle-row">
-        <button id="btnTheme" class="btn-theme" data-i18n="btn.theme_toggle" data-i18n-attr="title"
-          title="切换主题">🌙</button>
+        <select id="themeSelect" class="theme-select" aria-label="主题选择">
+          <option value="system" data-i18n="theme.system">跟随系统</option>
+          <option value="light" data-i18n="theme.light">亮模式</option>
+          <option value="dark" data-i18n="theme.dark">暗模式</option>
+        </select>
         <select id="langSelect" class="lang-select" aria-label="语言选择">
           <option value="zh-CN">中文</option>
           <option value="en">English</option>
@@ -429,12 +432,18 @@
       window.__i18n.setLang = (l) => { localStorage.setItem('lang', l); applyTranslations(l); };
     }
 
-    // Theme handling
+    // Theme handling (supports: 'system', 'light', 'dark')
+    const prefersDarkMQ = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    function resolveSystemTheme() {
+      return (prefersDarkMQ && prefersDarkMQ.matches) ? 'dark' : 'light';
+    }
+
     function applyTheme(theme) {
       const root = document.documentElement;
-      if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
-      const btn = document.getElementById('btnTheme');
-      if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+      const effective = theme === 'system' ? resolveSystemTheme() : theme;
+      if (effective === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
+      const sel = document.getElementById('themeSelect');
+      if (sel) sel.value = theme;
       localStorage.setItem('theme', theme);
     }
 
@@ -445,16 +454,26 @@
       if (sel) sel.value = lang;
       applyTranslations(lang);
 
-      const savedTheme = localStorage.getItem('theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const savedTheme = localStorage.getItem('theme') || 'system';
+      const themeSel = document.getElementById('themeSelect');
+      if (themeSel) themeSel.value = savedTheme;
       applyTheme(savedTheme);
+
+      // listen for system color-scheme changes when using 'system'
+      if (prefersDarkMQ) {
+        const mqHandler = () => {
+          if (localStorage.getItem('theme') === 'system') applyTheme('system');
+        };
+        if (prefersDarkMQ.addEventListener) prefersDarkMQ.addEventListener('change', mqHandler);
+        else if (prefersDarkMQ.addListener) prefersDarkMQ.addListener(mqHandler);
+      }
 
       // handlers
       document.getElementById('langSelect')?.addEventListener('change', (e) => {
         const v = e.target.value; localStorage.setItem('lang', v); applyTranslations(v);
       });
-      document.getElementById('btnTheme')?.addEventListener('click', () => {
-        const isDark = document.documentElement.classList.contains('dark');
-        applyTheme(isDark ? 'light' : 'dark');
+      document.getElementById('themeSelect')?.addEventListener('change', (e) => {
+        const v = e.target.value; applyTheme(v);
       });
     })();
 

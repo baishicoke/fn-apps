@@ -427,12 +427,18 @@ class Database:
                 key = f"{base}_{idx}"
         now_iso = now
         with self._lock:
-            cur = self._conn.execute(
-                "INSERT INTO templates (key, name, script_body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (key, name, script_body, now_iso, now_iso),
-            )
-            self._conn.commit()
-            tid = cur.lastrowid
+            try:
+                cur = self._conn.execute(
+                    "INSERT INTO templates (key, name, script_body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (key, name, script_body, now_iso, now_iso),
+                )
+                self._conn.commit()
+                tid = cur.lastrowid
+            except sqlite3.IntegrityError as exc:
+                msg = str(exc).lower()
+                if "unique" in msg or "templates.key" in msg:
+                    raise ValueError("template key already exists") from exc
+                raise ValueError("database integrity error") from exc
         return self.get_template(tid)  # type: ignore
 
     def update_template(self, template_id: int, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -447,12 +453,18 @@ class Database:
         if not script_body:
             raise ValueError("template script body is required")
         updated_at = isoformat(time_now())
-        with self._lock:
-            self._conn.execute(
-                "UPDATE templates SET key=?, name=?, script_body=?, updated_at=? WHERE id=?",
-                (key, name, script_body, updated_at, template_id),
-            )
-            self._conn.commit()
+        try:
+            with self._lock:
+                self._conn.execute(
+                    "UPDATE templates SET key=?, name=?, script_body=?, updated_at=? WHERE id=?",
+                    (key, name, script_body, updated_at, template_id),
+                )
+                self._conn.commit()
+        except sqlite3.IntegrityError as exc:
+            msg = str(exc).lower()
+            if "unique" in msg or "templates.key" in msg:
+                raise ValueError("template key already exists") from exc
+            raise ValueError("database integrity error") from exc
         return self.get_template(template_id)
 
     def delete_template(self, template_id: int) -> bool:
@@ -516,35 +528,41 @@ class Database:
         task["created_at"] = now
         task["updated_at"] = now
         with self._lock:
-            cur = self._conn.execute(
-                """
-                INSERT INTO tasks (
-                    name, account, trigger_type, schedule_expression, condition_script,
-                    condition_interval, event_type, is_active, pre_task_ids, script_body,
-                    last_run_at, next_run_at, last_condition_check_at,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    task["name"],
-                    task["account"],
-                    task["trigger_type"],
-                    task.get("schedule_expression"),
-                    task.get("condition_script"),
-                    task["condition_interval"],
-                    task["event_type"],
-                    1 if task["is_active"] else 0,
-                    json.dumps(task["pre_task_ids"]),
-                    task["script_body"],
-                    task.get("last_run_at"),
-                    task.get("next_run_at"),
-                    task.get("last_condition_check_at"),
-                    task["created_at"],
-                    task["updated_at"],
-                ),
-            )
-            task_id = cur.lastrowid
-            self._conn.commit()
+            try:
+                cur = self._conn.execute(
+                    """
+                    INSERT INTO tasks (
+                        name, account, trigger_type, schedule_expression, condition_script,
+                        condition_interval, event_type, is_active, pre_task_ids, script_body,
+                        last_run_at, next_run_at, last_condition_check_at,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task["name"],
+                        task["account"],
+                        task["trigger_type"],
+                        task.get("schedule_expression"),
+                        task.get("condition_script"),
+                        task["condition_interval"],
+                        task["event_type"],
+                        1 if task["is_active"] else 0,
+                        json.dumps(task["pre_task_ids"]),
+                        task["script_body"],
+                        task.get("last_run_at"),
+                        task.get("next_run_at"),
+                        task.get("last_condition_check_at"),
+                        task["created_at"],
+                        task["updated_at"],
+                    ),
+                )
+                task_id = cur.lastrowid
+                self._conn.commit()
+            except sqlite3.IntegrityError as exc:
+                msg = str(exc).lower()
+                if "unique" in msg or "tasks.name" in msg:
+                    raise ValueError("task name already exists") from exc
+                raise ValueError("database integrity error") from exc
         return self.get_task(task_id)  # type: ignore
 
     def update_task(self, task_id: int, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -563,34 +581,40 @@ class Database:
                 payload["next_run_at"] = None  # 让 _prepare_task_payload 自动计算
             task = self._prepare_task_payload({**existing, **payload}, is_update=True)
             task["updated_at"] = isoformat(time_now())
-            with self._lock:
-                self._conn.execute(
-                    """
-                    UPDATE tasks SET
-                        name=?, account=?, trigger_type=?, schedule_expression=?, condition_script=?,
-                        condition_interval=?, event_type=?, is_active=?, pre_task_ids=?, script_body=?,
-                        last_run_at=?, next_run_at=?, last_condition_check_at=?, updated_at=?
-                    WHERE id=?
-                    """,
-                    (
-                        task["name"],
-                        task["account"],
-                        task["trigger_type"],
-                        task.get("schedule_expression"),
-                        task.get("condition_script"),
-                        task["condition_interval"],
-                        task["event_type"],
-                        1 if task["is_active"] else 0,
-                        json.dumps(task["pre_task_ids"]),
-                        task["script_body"],
-                        task.get("last_run_at"),
-                        task.get("next_run_at"),
-                        task.get("last_condition_check_at"),
-                        task["updated_at"],
-                        task_id,
-                    ),
-                )
-                self._conn.commit()
+            try:
+                with self._lock:
+                    self._conn.execute(
+                        """
+                        UPDATE tasks SET
+                            name=?, account=?, trigger_type=?, schedule_expression=?, condition_script=?,
+                            condition_interval=?, event_type=?, is_active=?, pre_task_ids=?, script_body=?,
+                            last_run_at=?, next_run_at=?, last_condition_check_at=?, updated_at=?
+                        WHERE id=?
+                        """,
+                        (
+                            task["name"],
+                            task["account"],
+                            task["trigger_type"],
+                            task.get("schedule_expression"),
+                            task.get("condition_script"),
+                            task["condition_interval"],
+                            task["event_type"],
+                            1 if task["is_active"] else 0,
+                            json.dumps(task["pre_task_ids"]),
+                            task["script_body"],
+                            task.get("last_run_at"),
+                            task.get("next_run_at"),
+                            task.get("last_condition_check_at"),
+                            task["updated_at"],
+                            task_id,
+                        ),
+                    )
+                    self._conn.commit()
+            except sqlite3.IntegrityError as exc:
+                msg = str(exc).lower()
+                if "unique" in msg or "tasks.name" in msg:
+                    raise ValueError("task name already exists") from exc
+                raise ValueError("database integrity error") from exc
             return self.get_task(task_id)
 
     def delete_task(self, task_id: int) -> bool:
@@ -1228,7 +1252,13 @@ class SchedulerRequestHandler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 if payload is None:
                     return
-                task = ctx.db.create_task(payload)
+                try:
+                    task = ctx.db.create_task(payload)
+                except sqlite3.IntegrityError as exc:
+                    # Convert DB constraint errors (e.g. unique name) to client 400
+                    logger.info("create_task integrity error: %s", exc)
+                    self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                    return
                 self._json_response(task, status=HTTPStatus.CREATED)
                 return
             self.send_error(HTTPStatus.METHOD_NOT_ALLOWED)
@@ -1247,7 +1277,12 @@ class SchedulerRequestHandler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 if payload is None:
                     return
-                task = ctx.db.update_task(task_id, payload)
+                try:
+                    task = ctx.db.update_task(task_id, payload)
+                except sqlite3.IntegrityError as exc:
+                    logger.info("update_task integrity error: %s", exc)
+                    self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                    return
                 if not task:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return

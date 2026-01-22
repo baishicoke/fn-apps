@@ -24,6 +24,16 @@ function _t(key, vars) {
   } catch (e) { return key; }
 }
 
+// Map common backend error messages to localized, user-friendly messages
+function mapApiErrorMessage(raw) {
+  if (!raw) return null;
+  const s = String(raw).toLowerCase();
+  if (s.includes('task name already exists')) return _t('error.task_name_exists');
+  if (s.includes('template key already exists')) return _t('error.template_key_exists');
+  if (s.includes('database integrity')) return _t('error.database_integrity');
+  return null;
+}
+
 const AUTO_REFRESH_INTERVAL = 5000; // 5 seconds
 let autoRefreshTimer = null;
 
@@ -448,9 +458,10 @@ const api = {
       }
     }
     if (!response.ok) {
-      const message = (payload && (payload.error || payload._raw)) || response.statusText || `HTTP ${response.status}`;
+      const rawMessage = (payload && (payload.error || payload._raw)) || response.statusText || `HTTP ${response.status}`;
+      const friendly = mapApiErrorMessage(rawMessage) || rawMessage;
       console.error("API error", { url: resolved, status: response.status, payload });
-      throw new Error(message);
+      throw new Error(friendly);
     }
     return payload || {};
   },
