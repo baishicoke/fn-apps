@@ -2,12 +2,4 @@
 
 ### This script is called before the user installs the application.
 
-curl -kL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$(uname -m) -o /usr/bin/ttyd
-chmod +x /usr/bin/ttyd 2>/dev/null
-[ ! -x /usr/bin/ttyd ] && echo "Failed to install ttyd" >$TRIM_TEMP_LOGFILE && exit 1
-
-apt update
-apt install -y --no-install-recommends tmux
-[ $? -ne 0 ] && echo "Failed to install tmux" >$TRIM_TEMP_LOGFILE && exit 1
-
 exit 0

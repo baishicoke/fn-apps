@@ -1,5 +1,5 @@
 appname               = fn-terminal
-version               = 1.0.7
+version               = 1.0.8
 display_name          = terminal
 desc                  = terminal (ttyd + tmux) 是一个基于 Web 的终端应用程序，允许用户通过浏览器访问和管理服务器终端会话，提供便捷的远程终端操作体验。
 platform              = all
@@ -10,4 +10,4 @@ maintainer            = Ing
 maintainer_url        = https://github.com/RROrg
 distributor           = RROrg
 distributor_url       = https://github.com/RROrg/fn-apps
-install_type          = root
+reloadui              = yes

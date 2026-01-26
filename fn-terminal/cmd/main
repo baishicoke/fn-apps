@@ -21,7 +21,8 @@ TTYDARGS+=(-t titleFixed=fnOS -t allow-clipboard-read=true -t allow-clipboard-wr
 TTYDARGS+=(tmux -u new -A -s terminal)
 
 # write the command to start your program here
-CMD="${TTYDARGS[*]}"
+ARCH=$(uname -m)
+CMD="PATH=${TRIM_APPDEST}/server/${ARCH:-}/usr/bin:${PATH:-} LD_LIBRARY_PATH=${TRIM_APPDEST}/server/${ARCH:-}/usr/lib/:${TRIM_APPDEST}/server/${ARCH:-}/usr/lib/${ARCH:-}-linux-gnu:${LD_LIBRARY_PATH:-} ${TTYDARGS[*]}"
 
 log_msg() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >>${LOG_FILE}

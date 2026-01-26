@@ -2,12 +2,10 @@
 
 ### This script is called before the user upgrades the application.
 
-curl -kL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$(uname -m) -o /usr/bin/ttyd
-chmod +x /usr/bin/ttyd 2>/dev/null
-[ ! -x /usr/bin/ttyd ] && echo "Failed to install ttyd" >$TRIM_TEMP_LOGFILE && exit 1
-
-apt update
-apt upgrade -y tmux
-[ $? -ne 0 ] && echo "Failed to upgrade tmux" >$TRIM_TEMP_LOGFILE && exit 1
+# 历史版本兼容性处理
+if [ ! "$(printf '%s\n%s\n' "${TRIM_OLD_APPVER}" "1.0.8" | sort -V | head -n1)" = "1.0.8" ]; then
+  echo "由于 v1.0.8 版本修改为离线安装，旧版本无法升级，请卸载后重新安装。" >$TRIM_TEMP_LOGFILE
+  exit 1
+fi
 
 exit 0
