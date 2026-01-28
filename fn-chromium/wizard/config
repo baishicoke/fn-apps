@@ -63,7 +63,7 @@
         "type": "text",
         "field": "wizard_port",
         "label": "端口号",
-        "initValue": "4001",
+        "initValue": "4000",
         "rules": [
           {
             "required": true,
@@ -86,8 +86,8 @@
             "message": "请输入基础路径"
           },
           {
-            "pattern": "^(?!/?chromium(?:/)?$)(/[a-zA-Z0-9_/-]+)?$",
-            "message": "基础路径只能包含字母、数字、下划线、斜杠和破折号，且不能为 chromium"
+            "pattern": "^(?!/?chromium(?:/)?$)(?:/|/[a-zA-Z0-9_/-]+)?$",
+            "message": "基础路径只能包含字母、数字、下划线、斜杠和破折号，允许 /，但不能为 /chromium。"
           }
         ]
       }

@@ -16,7 +16,8 @@ services:
     volumes:
       - /var/apps/fn-chromium/shares/chromium/config:/config
     ports:
-      - ${wizard_port:-4001}:3001
+      - ${wizard_port:-4000}:3000
+      # - ${wizard_port:-4001}:3001
     shm_size: "1gb"
     restart: unless-stopped
     networks:

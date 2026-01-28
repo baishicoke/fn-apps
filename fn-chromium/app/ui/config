@@ -1,17 +1,17 @@
 {
-    ".url": {
-        "fn-chromium.Application": {
-            "title": "Chromium",
-            "desc": "Chromium",
-            "icon": "images/icon_{0}.png",
-            "type": "iframe",
-            "protocol": "https",
-            "port": "${wizard_port}",
-            "url": "${wizard_base_path}",
-            "allUsers": true,
-            "control": {
-                "accessPerm": "readonly"
-            }
-        }
+  ".url": {
+    "fn-chromium.Application": {
+      "title": "Chromium",
+      "desc": "Chromium",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "${wizard_port}",
+      "url": "${wizard_base_path}",
+      "allUsers": true,
+      "control": {
+        "accessPerm": "readonly"
+      }
     }
+  }
 }
