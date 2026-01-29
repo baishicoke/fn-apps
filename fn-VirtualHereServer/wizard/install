@@ -1,0 +1,15 @@
+[
+  {
+    "stepTitle": "安装向导",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "欢迎使用我们的应用！"
+      },
+      {
+        "type": "tips",
+        "helpText": "客户端下载地址：<a href=\"https://www.virtualhere.com/usb_client_software\" target=\"_blank\">https://www.virtualhere.com/usb_client_software</a>"
+      }
+    ]
+  }
+]

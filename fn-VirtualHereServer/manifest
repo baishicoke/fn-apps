@@ -1,0 +1,11 @@
+appname               = fn-VirtualHereServer
+version               = 4.8.6
+display_name          = VirtualHereServer
+desc                  = VirtualHere USB 服务器支持通过网络远程访问 USB 设备。
+platform              = all
+source                = thirdparty
+maintainer            = VirtualHere Pty. Ltd.
+maintainer_url        = https://www.virtualhere.com/usb_server_software
+distributor           = VirtualHere Pty. Ltd.
+distributor_url       = https://www.virtualhere.com
+
