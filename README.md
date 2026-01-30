@@ -6,10 +6,13 @@
 
 | 应用名称 | 版本 | 平台 | 描述 |
 |----------|------|------|------|
+| fn-VirtualHereServer | v4.8.6 | all | VirtualHere USB 服务器支持通过网络远程访问 USB 设备。 |
+| fn-broadcom-sta | v1.0.0 | all | Broadcom STA 是 BCM4311-、BCM4312-、BCM4313-、BCM4321-、BCM4322-、BCM43142-、BCM43224-、BCM43225-、BCM43227-、BCM43228-、BCM4331-、BCM4360- 和 BCM4352 等 IEEE 802.11a/b/g/n 无线网卡的驱动程序。 |
 | fn-chromium | v1.0.1 | all | Chromium 是一个开源的网页浏览器项目，旨在为用户提供更安全、更快速和更稳定的浏览体验。 |
 | fn-codeserver | v1.0.5 | all | code-server 是 VS Code 的在线版本，允许您通过浏览器进行代码编辑和开发。 |
 | fn-fail2ban | v1.0.0 | all | fail2ban 是一个开源的入侵防御工具，用于保护 Linux 服务器免受暴力破解攻击。 它通过监控日志文件，检测可疑的登录尝试，并自动封禁恶意 IP 地址，从而增强系统的安全性。 |
 | fn-kodi | v1.0.5 | all | Kodi 是一个免费且开源的媒体播放器软件，用于播放视频、音频和图像。 |
+| fn-monitor | v1.0.0 | all | 显示器/电源设置应用，用于配置系统的显示器和电源选选项。 |
 | fn-ntfs3 | v1.0.4 | all | ntfs3 驱动是一个用于 Linux 内核的开源 NTFS 文件系统驱动程序，旨在提供对 NTFS 格式化分区的高性能读写支持。 |
 | fn-open-vm-tools | v1.0.7 | all | Open-VM-Tools 是 VMware Tools 的开源替代品，旨在为运行在 VMware 环境中的虚拟机提供更好的性能和用户体验。 |
 | fn-qemu-ga | v1.0.7 | all | QEMU Guest Agent 是一个运行在虚拟机内部的守护进程，旨在通过与虚拟化主机的交互，执行一系列操作以增强虚拟机的管理能力。 |
